@@ -1,4 +1,5 @@
 import { defineConfig } from "blume";
+import { vercel as vercelAnalytics } from "blume/analytics";
 import { vercel } from "blume/deploy";
 import seoHead from "./integrations/seo-head.mjs";
 
@@ -11,6 +12,13 @@ const inter = {
 };
 
 export default defineConfig({
+  // Vercel Web Analytics, rendered through the official Astro component Blume
+  // injects into every page's <head>. It needs no keys: the script is served
+  // first-party from /_vercel/insights, which only exists where Vercel serves
+  // the site. Emission is production-only, so local traffic never reaches the
+  // dashboard. `vercelAnalytics` is aliased to keep it distinct from the
+  // deploy adapter of the same name.
+  analytics: [vercelAnalytics()],
   // A Vercel server build, not a static one: it is what wires Accept:
   // text/markdown negotiation into the deploy and gives a missing page a
   // Markdown body and a JSON problem document instead of the HTML shell.
