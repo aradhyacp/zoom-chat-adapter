@@ -1,12 +1,27 @@
+<div align="center">
+
 # zoom-chat-adapter
 
-[![npm version](https://img.shields.io/npm/v/zoom-chat-adapter)](https://www.npmjs.com/package/zoom-chat-adapter)
-[![npm downloads](https://img.shields.io/npm/dm/zoom-chat-adapter)](https://www.npmjs.com/package/zoom-chat-adapter)
-[![GitHub](https://img.shields.io/badge/source-GitHub-blue?logo=github)](https://github.com/aradhyacp/zoom-chat-adapter)
+**Zoom Team Chat for [Chat SDK](https://chat-sdk.dev)** — channels, DMs, slash commands and @-mentions through one `Chat` interface.
 
-> **Community adapter** — This package is a community-maintained Zoom adapter for Chat SDK. It is not an official `@chat-adapter/*` package.
+[![npm version](https://img.shields.io/npm/v/zoom-chat-adapter?style=flat-square&color=2D8CFF)](https://www.npmjs.com/package/zoom-chat-adapter)
+[![npm downloads](https://img.shields.io/npm/dm/zoom-chat-adapter?style=flat-square&color=2D8CFF)](https://www.npmjs.com/package/zoom-chat-adapter)
+[![license](https://img.shields.io/npm/l/zoom-chat-adapter?style=flat-square&color=2D8CFF)](./LICENSE)
+[![docs](https://img.shields.io/badge/docs-zoom--chat--adapter.vercel.app-2D8CFF?style=flat-square)](https://zoom-chat-adapter.vercel.app)
 
-Zoom Team Chat adapter for [Chat SDK](https://chat-sdk.dev) — send and receive channel messages, DMs, and slash commands from your bot.
+[**Documentation**](https://zoom-chat-adapter.vercel.app) · [Quickstart](https://zoom-chat-adapter.vercel.app/quickstart) · [API reference](https://zoom-chat-adapter.vercel.app/reference) · [Issues](https://github.com/aradhyacp/zoom-chat-adapter/issues)
+
+</div>
+
+> [!NOTE]
+> **Community adapter.** This package is community-maintained. It is not an official `@chat-adapter/*` package and is not published or supported by Zoom.
+
+## Highlights
+
+- **One webhook, one route.** Answers Zoom's setup challenge, verifies the HMAC signature, and turns events into ordinary Chat threads.
+- **Post, edit, delete, reply.** Markdown is converted to Zoom's structured content segments for you.
+- **Channel or DM, from the JID.** Thread IDs carry the Zoom JID, so you can tell the two apart.
+- **Honest about gaps.** Calls Zoom cannot support throw `NotImplementedError` instead of failing quietly. See [Known limitations](#known-limitations).
 
 ## Installation
 
@@ -14,7 +29,9 @@ Zoom Team Chat adapter for [Chat SDK](https://chat-sdk.dev) — send and receive
 pnpm add zoom-chat-adapter chat @chat-adapter/state-memory
 ```
 
-## Usage
+ESM only, for Node.js. A `state` adapter is required: `Chat` connects to it during initialization. `createMemoryState()` is the in-memory option for development and testing.
+
+## Quick start
 
 ```typescript
 import { createMemoryState } from "@chat-adapter/state-memory";
@@ -34,18 +51,50 @@ bot.onNewMention(async (thread, message) => {
 });
 ```
 
-When using `createZoomAdapter()` without arguments, credentials are auto-detected from environment variables.
+Called with no arguments, `createZoomAdapter()` reads its credentials from environment variables. Then add the one route Zoom posts to:
 
-A `state` adapter is required — `Chat` connects to it during initialization and crashes on the first webhook without one. `createMemoryState()` is the in-memory option for development and testing.
+```typescript
+// app/api/webhooks/zoom/route.ts
+import { bot } from "@/lib/bot";
+import { after } from "next/server";
+
+export async function POST(request: Request) {
+  return bot.webhooks.zoom(request, { waitUntil: after });
+}
+```
+
+Pass the `Request` through untouched: the signature is computed over the raw body, so reading it first breaks verification for every event.
+
+## Documentation
+
+Full guides live at **[zoom-chat-adapter.vercel.app](https://zoom-chat-adapter.vercel.app)**. Every page also serves raw Markdown by adding `.md` to its URL, and [`/llms.txt`](https://zoom-chat-adapter.vercel.app/llms.txt) indexes them for agents.
+
+| Guide | What it covers |
+| :-- | :-- |
+| [Quickstart](https://zoom-chat-adapter.vercel.app/quickstart) | A bot receiving and sending messages in about ten minutes |
+| [Marketplace setup](https://zoom-chat-adapter.vercel.app/marketplace-setup) | The Zoom app, its scopes, event subscriptions, and ngrok |
+| [Configuration](https://zoom-chat-adapter.vercel.app/configuration) | Every option and its environment variable |
+| [Webhooks](https://zoom-chat-adapter.vercel.app/webhooks) | Setup challenge, signature checks, event dispatch |
+| [Messaging](https://zoom-chat-adapter.vercel.app/messaging) | Sending, editing, deleting, and threaded replies |
+| [Formatting](https://zoom-chat-adapter.vercel.app/formatting) | Markdown to Zoom content segments |
+| [Thread IDs](https://zoom-chat-adapter.vercel.app/thread-ids) | The thread format, channel versus DM |
+| [API reference](https://zoom-chat-adapter.vercel.app/reference) | Every export and method |
+| [Limitations](https://zoom-chat-adapter.vercel.app/limitations) | What Zoom will not do, and what is not built yet |
+| [Troubleshooting](https://zoom-chat-adapter.vercel.app/troubleshooting) | The failure modes that come up |
 
 ## Zoom Marketplace app setup
 
-### Prerequisites
+<details>
+<summary><b>Step-by-step: create the app and collect the five credentials</b></summary>
+
+&nbsp;
+
+**Prerequisites**
 
 - Zoom account with developer access
 - A deployed URL or ngrok tunnel for local testing (e.g. `https://your-domain.com`)
 
-### Steps
+**Steps**
 
 1. **Create the app**
    - Go to [marketplace.zoom.us](https://marketplace.zoom.us) → **Develop** → **Build App**
@@ -75,7 +124,9 @@ A `state` adapter is required — `Chat` connects to it during initialization an
 7. **Authorize the app** — from **Local Test** → **Add app now**
    - Complete the OAuth flow to install the bot in your account
 
-### Environment variables checklist
+</details>
+
+### Environment variables
 
 ```bash
 ZOOM_CLIENT_ID=              # Basic Information → App Credentials
@@ -85,44 +136,36 @@ ZOOM_ROBOT_JID=              # Surface → Team Chat Subscription → Bot JID
 ZOOM_WEBHOOK_SECRET_TOKEN=   # Features → Access → Token → Secret Token
 ```
 
-### Local testing with ngrok
+**Local testing with ngrok**
 
 ```bash
 ngrok http 3000
 # Use the https:// forwarding URL as your Bot Endpoint URL and event subscription URL
 ```
 
-## Required scopes
+### Required scopes
 
 | Scope | Purpose |
-|-------|---------|
+| :-- | :-- |
 | `imchat:bot` | Send bot messages to channels and DMs |
 | `team_chat:read:app_mention:admin` | Receive app_mention events |
 | `team_chat:write:message:admin` | Send, edit, and delete messages |
 
-## Webhook setup
-
-```typescript
-// app/api/webhooks/zoom/route.ts
-import { bot } from "@/lib/bot";
-import { after } from "next/server";
-
-export async function POST(request: Request) {
-  return bot.webhooks.zoom(request, { waitUntil: after });
-}
-```
+## Webhooks
 
 The adapter handles these event types:
 
-- `endpoint.url_validation` — CRC challenge answered automatically during setup
-- `bot_notification` — channel messages, DMs, and slash commands
-- `team_chat.app_mention` — @-mentions in channels
+| Event | What it is |
+| :-- | :-- |
+| `endpoint.url_validation` | CRC challenge, answered automatically during setup |
+| `bot_notification` | Channel messages, DMs, and slash commands |
+| `team_chat.app_mention` | @-mentions in channels |
 
-Webhook signatures (`x-zm-signature`) are verified with HMAC-SHA256 and timestamps older than 5 minutes are rejected.
+Webhook signatures (`x-zm-signature`) are verified with HMAC-SHA256, and timestamps older than 5 minutes are rejected.
 
 ## Configuration
 
-All options are auto-detected from environment variables when not provided.
+All options fall back to environment variables when not provided.
 
 | Option | Required | Description |
 |--------|----------|-------------|
@@ -148,35 +191,25 @@ createZoomAdapter({
 });
 ```
 
-## Features
+## What's supported
 
-### Messaging
-
-| Feature | Supported |
-|---------|-----------|
-| Post message | Yes |
-| Edit message | Yes |
-| Delete message | Yes |
-| Reply in thread | Yes |
-| Streaming | Buffered (accumulates then sends) |
-
-### Conversations
-
-| Feature | Supported |
-|---------|-----------|
-| DMs | Yes (via bot_notification) |
-| Channel slash commands | Yes (via bot_notification) |
-| Thread subscription (subscribe flow) | No (Zoom platform limitation — see Known Limitations) |
-| DM thread replies | No (Zoom platform limitation — see Known Limitations) |
-| Reactions | No (not implemented in v1) |
-| Typing indicator | No (Zoom has no typing indicator API) |
+| Capability | Status |
+| :-- | :-- |
+| Post, edit, and delete a message | ✅ |
+| Reply in a thread (`metadata.replyTo`) | ✅ |
+| DMs and channel slash commands (via `bot_notification`) | ✅ |
+| Streaming | ⚠️ Buffered: accumulates, then sends once |
+| Typing indicator | ➖ No-op, Zoom has no typing API |
+| Thread subscription (`thread.subscribe()`) | ❌ Zoom platform limitation |
+| DM thread replies | ❌ Zoom platform limitation |
+| Reactions, message history | ❌ Not implemented (throws `NotImplementedError`) |
 
 ## Formatting
 
-The adapter converts between Chat SDK markdown and Zoom's message format automatically. Supported syntax:
+The adapter converts Chat SDK markdown to Zoom's message format automatically.
 
 | Syntax | Renders as |
-|--------|-----------|
+| :-- | :-- |
 | `**bold**` | Bold |
 | `_italic_` | Italic |
 | `` `code` `` | Inline code |
@@ -191,9 +224,8 @@ The adapter converts between Chat SDK markdown and Zoom's message format automat
 zoom:{channelId}:{messageId}
 ```
 
-Examples:
 - Channel message: `zoom:abc123@conference.xmpp.zoom.us:msg-id-456`
-- DM: `zoom:{userJid}:{event_ts}` (sender-based channel with event timestamp as message ID)
+- DM: `zoom:{userJid}:{event_ts}` (sender-based channel with the event timestamp as message ID)
 
 ## Known limitations
 
@@ -205,8 +237,13 @@ Examples:
 
 ## Troubleshooting
 
+<details>
+<summary><b>Common problems and fixes</b></summary>
+
+&nbsp;
+
 **Webhook signature verification fails**
-- Ensure you're reading the raw request body before any JSON parsing
+- Pass the untouched `Request` to `bot.webhooks.zoom`: the HMAC is computed over the raw body, so parsing or logging it first breaks verification
 - Emoji or non-ASCII characters in payloads may fail HMAC verification due to a Zoom server-side Unicode normalization issue (ZOOM-506645) — check debug logs for raw body hex
 
 **Bot not receiving events**
@@ -224,12 +261,16 @@ Examples:
 **`postMessage` returns 401**
 - The `/v2/im/chat/messages` endpoint requires a `client_credentials` token. Ensure you're not using `account_credentials` grant type.
 
+</details>
+
+More in the [troubleshooting guide](https://zoom-chat-adapter.vercel.app/troubleshooting).
+
 ## Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, testing, and pull request guidelines.
+Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, testing, and pull request guidelines.
 
-This project uses [Ultracite](https://www.ultracite.ai/) ([Biome](https://biomejs.dev/)) for linting and formatting, enforced by a [Husky](https://typicode.github.io/husky/) pre-commit hook — `pnpm fix` runs on staged files and commits with remaining lint errors are blocked.
+This project uses [Ultracite](https://www.ultracite.ai/) ([Biome](https://biomejs.dev/)) for linting and formatting, enforced by a [Husky](https://typicode.github.io/husky/) pre-commit hook. `pnpm fix` runs on staged files, and commits with remaining lint errors are blocked.
 
 ## License
 
-MIT
+[MIT](./LICENSE)
