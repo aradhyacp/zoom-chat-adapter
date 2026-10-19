@@ -16,9 +16,9 @@ pnpm add zoom-chat-adapter chat @chat-adapter/state-memory
 Add Zoom Team Chat support to this project with the community adapter zoom-chat-adapter.
 
 1. Install it: pnpm add zoom-chat-adapter chat @chat-adapter/state-memory
-2. Read the docs first: https://github.com/aradhyacp/zoom-chat-adapter/tree/main/apps/docs/docs
-   — quickstart.mdx, then webhooks.mdx and messaging.mdx. Where the docs are
-   deployed, /llms.txt indexes them and every page serves Markdown at .md.
+2. Read the docs first: https://zoom-chat-adapter.vercel.app/llms.txt indexes
+   every page. Start with https://zoom-chat-adapter.vercel.app/quickstart.md,
+   then webhooks.md and messaging.md — every page serves Markdown at .md.
 3. Create the Chat instance with a state adapter, then one POST route that passes
    the untouched Request to bot.webhooks.zoom — reading the body first breaks
    Zoom's signature check.

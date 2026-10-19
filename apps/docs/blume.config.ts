@@ -11,6 +11,8 @@ const inter = {
   weights: [300, 400, 500, 600],
 };
 
+const SITE_URL = "https://zoom-chat-adapter.vercel.app";
+
 export default defineConfig({
   // Vercel Web Analytics, rendered through the official Astro component Blume
   // injects into every page's <head>. It needs no keys: the script is served
@@ -22,9 +24,12 @@ export default defineConfig({
   // A Vercel server build, not a static one: it is what wires Accept:
   // text/markdown negotiation into the deploy and gives a missing page a
   // Markdown body and a JSON problem document instead of the HTML shell.
-  // `site` stays host-detected, so leave DOCS_SITE unset on Vercel.
+  // `site` is pinned to the canonical URL so llms.txt, the sitemap and the
+  // .well-known files carry one stable address in every build — local, CI and
+  // Vercel previews included, which host detection would point at the
+  // per-deployment URL. Set DOCS_SITE to override it, for a custom domain.
   deployment: vercel({
-    site: process.env.DOCS_SITE,
+    site: process.env.DOCS_SITE || SITE_URL,
   }),
   description:
     "Community Zoom Team Chat adapter for Chat SDK — channels, DMs, slash commands, and @-mentions through one Chat interface.",

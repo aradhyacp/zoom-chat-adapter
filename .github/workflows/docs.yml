@@ -38,12 +38,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # The site is deployed from Vercel, so CI only has to prove it builds
       # clean and that every internal link still resolves.
-      # Blume only emits the sitemap and the .well-known agent files when it
-      # knows the site URL, and CI has no host to detect it from. The value only
-      # shapes absolute links in the build output; nothing is deployed from here.
       - run: pnpm --filter docs build
-        env:
-          DOCS_SITE: https://zoom-chat-adapter.vercel.app/
       - run: pnpm --filter docs validate
       # Every agent-facing artifact and the Accept: text/markdown routing the
       # build wires into its Vercel config — see apps/docs/scripts.

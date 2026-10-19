@@ -20,7 +20,7 @@
     "messaging",
     "team-chat"
   ],
-  "homepage": "https://github.com/aradhyacp/zoom-chat-adapter#readme",
+  "homepage": "https://zoom-chat-adapter.vercel.app",
   "bugs": {
     "url": "https://github.com/aradhyacp/zoom-chat-adapter/issues"
   },
