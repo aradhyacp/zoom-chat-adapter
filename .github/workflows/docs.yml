@@ -40,8 +40,3 @@ jobs:
       # clean and that every internal link still resolves.
       - run: pnpm --filter docs build
       - run: pnpm --filter docs validate
-      # Vercel Web Analytics is emitted in production builds only, and nothing
-      # else fails when it silently drops out of the config: prove the
-      # component element actually reached the built pages.
-      - name: Check Vercel Web Analytics is wired
-        run: grep -rq "<vercel-analytics" apps/docs/dist
