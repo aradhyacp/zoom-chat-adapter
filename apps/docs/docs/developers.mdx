@@ -1,43 +1,30 @@
 ---
 title: Developer portal
-description: The five credentials, a condensed quickstart, a browser sandbox for Zoom payloads and thread IDs, the full docs map, and every machine-readable surface an agent can read.
+description: Credentials, a minimal app, where to try the interactive demos, and the machine-readable copies of these docs for agents and tooling.
 ---
 
-Everything needed to build against `zoom-chat-adapter`, on one page: the
-credentials, the two files a minimal app is made of, a sandbox for Zoom payloads
-and thread IDs, and the machine-readable surfaces that agents and tooling can
-read instead of scraping HTML.
+Everything needed to build against `zoom-chat-adapter` in one place. For the full
+walkthrough, start with the [Quickstart](./quickstart).
 
 ## Credentials
 
-This package has no API keys of its own. It authenticates to Zoom with your own
-**Server-to-Server OAuth** app, and needs five values:
+The adapter authenticates to Zoom with your own **Server-to-Server OAuth** app and
+needs five values. [Marketplace setup](./marketplace-setup) shows where each one
+lives in the Zoom dashboard.
 
 | Environment variable | Where it comes from |
 | --- | --- |
-| `ZOOM_CLIENT_ID` | App Credentials in the Marketplace app |
-| `ZOOM_CLIENT_SECRET` | App Credentials in the Marketplace app |
-| `ZOOM_ACCOUNT_ID` | App Credentials in the Marketplace app |
+| `ZOOM_CLIENT_ID` | App Credentials |
+| `ZOOM_CLIENT_SECRET` | App Credentials |
+| `ZOOM_ACCOUNT_ID` | App Credentials |
 | `ZOOM_ROBOT_JID` | Team Chat Subscription → Bot JID |
 | `ZOOM_WEBHOOK_SECRET_TOKEN` | Features → Access → Token |
 
-```bash .env.local
-ZOOM_CLIENT_ID=
-ZOOM_CLIENT_SECRET=
-ZOOM_ACCOUNT_ID=
-ZOOM_ROBOT_JID=
-ZOOM_WEBHOOK_SECRET_TOKEN=
-```
+`createZoomAdapter()` reads all five from the environment. A missing one throws a
+`ValidationError` naming the variable as soon as the adapter is constructed. To
+supply them another way, see [Configuration](./configuration).
 
-`createZoomAdapter()` reads all five from the environment. A missing one throws
-a `ValidationError` naming the variable, when the adapter is constructed rather
-than on the first webhook. To keep secrets elsewhere, pass them explicitly —
-see [Configuration](./configuration). [Marketplace setup](./marketplace-setup)
-shows where each value lives in the Zoom dashboard.
-
-## The whole app, condensed
-
-Three pieces: an install, a `Chat` instance, and the one route Zoom posts to.
+## A minimal app
 
 ```bash
 pnpm add zoom-chat-adapter chat @chat-adapter/state-memory
@@ -68,63 +55,42 @@ export async function POST(request: Request) {
 }
 ```
 
-Hand the `Request` over untouched: reading the body first breaks the signature
-check for every event. A `state` adapter is not optional, since `Chat` connects
-to it during initialization. [Quickstart](./quickstart) walks the same path with
-the Zoom app and an ngrok tunnel attached.
+Pass the `Request` through untouched: reading the body first breaks the signature
+check for every event. `Chat` also needs a state adapter, because it connects to
+one during initialization.
 
-## Sandbox
+## Try it in the browser
 
-Three playgrounds that run entirely in this page. No Zoom account, no
-credentials, no network calls — they are how you check a payload shape, a thread
-ID, or a formatting conversion before writing any code.
+The interactive demos run entirely in the page, with no Zoom account or
+credentials, and each sits beside the documentation it illustrates.
 
-### Inspect a webhook payload
+- [Webhooks](./webhooks) — what arrives at the endpoint and what the adapter returns.
+- [Thread IDs](./thread-ids) — decode a thread ID and see whether it is a channel or a DM.
+- [Formatting](./formatting) — the Zoom content segments your markdown is converted into.
 
-Paste a `bot_notification` or `team_chat.app_mention` body and read what the
-adapter would do with it — signature handling included. The full event list is
-in [Webhooks](./webhooks).
+## For agents and tooling
 
-<WebhookInspector />
+The docs site publishes the same content in machine-readable forms, so nothing has
+to be scraped out of HTML.
 
-### Decode a thread ID
+| URL | What it returns |
+| --- | --- |
+| `/llms.txt` | An index of every page, with one-line descriptions |
+| `/llms-full.txt` | The full Markdown of every page in one file |
+| `/<route>.md` | Any page as raw Markdown, for example `/quickstart.md` |
+| `/<route>` with `Accept: text/markdown` | The same Markdown at the page's own URL |
+| `/api/docs/pages.json` | Every page with its route, title, and description |
+| `/openapi.json` | An OpenAPI description of the JSON API |
+| `/agent-readability.json` | Every agent-facing artifact on this site |
+| `/sitemap.xml`, `/robots.txt` | The crawlable URL set and the crawl policy |
 
-A thread ID carries the Zoom JID it came from, and the JID is what decides
-channel or DM. [Thread IDs](./thread-ids) has the rules.
+A request for a page that does not exist answers `404` in the format the `Accept`
+header asks for, so a broken link returns a short Markdown or JSON explanation
+instead of a page of chrome.
 
-<ThreadIdPlayground />
-
-### Convert markdown to Zoom content
-
-The reply you write is converted into Zoom's structured content segments.
-[Formatting](./formatting) documents what survives the trip.
-
-<FormatPreview />
-
-## Documentation map
+## Where to go next
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" href="./quickstart" icon="rocket">
-    A bot receiving and sending messages in about ten minutes.
-  </Card>
-  <Card title="Marketplace setup" href="./marketplace-setup" icon="settings">
-    The Zoom app, its scopes, the event subscriptions, and ngrok.
-  </Card>
-  <Card title="Configuration" href="./configuration" icon="sliders">
-    Every option, its environment variable, and what happens when it is missing.
-  </Card>
-  <Card title="Webhooks" href="./webhooks" icon="webhook">
-    The setup challenge, signature checks, and the responses Zoom expects.
-  </Card>
-  <Card title="Messaging" href="./messaging" icon="message-square">
-    Sending, editing, deleting, and threaded replies.
-  </Card>
-  <Card title="Formatting" href="./formatting" icon="type">
-    Markdown to Zoom content segments, and what is dropped on the way.
-  </Card>
-  <Card title="Thread IDs" href="./thread-ids" icon="hash">
-    The thread format, channel versus DM, and when decoding fails.
-  </Card>
   <Card title="API reference" href="./reference" icon="code">
     Every export and method, with its exact behavior.
   </Card>
@@ -132,42 +98,9 @@ The reply you write is converted into Zoom's structured content segments.
     What Zoom's platform will not do, and what this adapter has not built.
   </Card>
   <Card title="Troubleshooting" href="./troubleshooting" icon="life-buoy">
-    The failure modes that actually come up, and what each one means.
+    The failure modes that come up, and what each one means.
+  </Card>
+  <Card title="Source" href="https://github.com/aradhyacp/zoom-chat-adapter" icon="github">
+    The adapter on GitHub, and on npm as `zoom-chat-adapter`.
   </Card>
 </CardGroup>
-
-## Machine-readable surfaces
-
-The docs site publishes the same content for agents, so nothing has to be
-scraped out of HTML.
-
-| URL | What it returns |
-| --- | --- |
-| `/llms.txt` | An index of every page, with one-line descriptions |
-| `/llms-full.txt` | The full Markdown of every page in one file |
-| `/<route>.md` | Any page's raw Markdown, for example `/quickstart.md` |
-| `/<route>` with `Accept: text/markdown` | The same Markdown at the page's own URL, with `Vary: Accept` |
-| `/openapi.json` | An OpenAPI 3.1 description of the JSON API below |
-| `/api/docs/pages.json` | Every page with its route, title, description, and its Markdown and JSON forms |
-| `/api/docs/search?q=` | Full-text search across the docs |
-| `/agent-readability.json` | Every agent-facing artifact on this site, in one manifest |
-| `/.well-known/agent-skills/index.json` | The Agent Skills this site publishes |
-| `/sitemap.xml`, `/robots.txt` | The crawlable URL set and the crawl policy |
-| `/404.md`, `/404.json` | The missing-page body as Markdown, and as an RFC 9457 problem document |
-
-A request for a page that does not exist answers `404` in the format the
-`Accept` header asks for, so a broken link returns instructions rather than a
-page of chrome. The adapter's own package is published on
-[npm](https://www.npmjs.com/package/zoom-chat-adapter) and its source lives on
-[GitHub](https://github.com/aradhyacp/zoom-chat-adapter).
-
-## Working locally
-
-```bash
-ngrok http 3000
-```
-
-Use the `https://` forwarding URL as both the Bot Endpoint URL and the event
-subscription URL in your Marketplace app. The adapter's own source and the pages
-you are reading are in the same repository; `pnpm dev:docs` serves this site on
-port 4321.
