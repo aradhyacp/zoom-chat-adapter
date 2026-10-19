@@ -1,5 +1,6 @@
 import { defineConfig } from "blume";
 import { vercel as vercelAnalytics } from "blume/analytics";
+import { vercel } from "blume/deploy";
 import seoHead from "./integrations/seo-head.mjs";
 
 // design.md substitutes Inter 300 for the licensed Waldenburg Light, so the
@@ -18,13 +19,13 @@ export default defineConfig({
   // dashboard. `vercelAnalytics` is aliased to keep it distinct from the
   // deploy adapter of the same name.
   analytics: [vercelAnalytics()],
-  deployment: {
-    // Left empty on purpose: Blume fills `site` in from the host's own env
-    // (on Vercel, the production domain) and an explicit value would win over
-    // that detection. Set DOCS_SITE to pin it — a custom domain, or a local
-    // build that needs the sitemap and absolute llms.txt links.
+  // A Vercel server build, not a static one: it is what wires Accept:
+  // text/markdown negotiation into the deploy and gives a missing page a
+  // Markdown body and a JSON problem document instead of the HTML shell.
+  // `site` stays host-detected, so leave DOCS_SITE unset on Vercel.
+  deployment: vercel({
     site: process.env.DOCS_SITE,
-  },
+  }),
   description:
     "Community Zoom Team Chat adapter for Chat SDK — channels, DMs, slash commands, and @-mentions through one Chat interface.",
   footer: {

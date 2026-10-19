@@ -4,6 +4,7 @@ export default defineMeta({
   pages: [
     "index",
     "quickstart",
+    "developers",
     "marketplace-setup",
     "configuration",
     "webhooks",

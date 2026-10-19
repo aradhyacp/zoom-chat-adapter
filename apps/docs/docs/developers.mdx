@@ -1,0 +1,106 @@
+---
+title: Developer portal
+description: Credentials, a minimal app, where to try the interactive demos, and the machine-readable copies of these docs for agents and tooling.
+---
+
+Everything needed to build against `zoom-chat-adapter` in one place. For the full
+walkthrough, start with the [Quickstart](./quickstart).
+
+## Credentials
+
+The adapter authenticates to Zoom with your own **Server-to-Server OAuth** app and
+needs five values. [Marketplace setup](./marketplace-setup) shows where each one
+lives in the Zoom dashboard.
+
+| Environment variable | Where it comes from |
+| --- | --- |
+| `ZOOM_CLIENT_ID` | App Credentials |
+| `ZOOM_CLIENT_SECRET` | App Credentials |
+| `ZOOM_ACCOUNT_ID` | App Credentials |
+| `ZOOM_ROBOT_JID` | Team Chat Subscription → Bot JID |
+| `ZOOM_WEBHOOK_SECRET_TOKEN` | Features → Access → Token |
+
+`createZoomAdapter()` reads all five from the environment. A missing one throws a
+`ValidationError` naming the variable as soon as the adapter is constructed. To
+supply them another way, see [Configuration](./configuration).
+
+## A minimal app
+
+```bash
+pnpm add zoom-chat-adapter chat @chat-adapter/state-memory
+```
+
+```ts lib/bot.ts
+import { createMemoryState } from "@chat-adapter/state-memory";
+import { Chat } from "chat";
+import { createZoomAdapter } from "zoom-chat-adapter";
+
+export const bot = new Chat({
+  userName: "mybot",
+  adapters: { zoom: createZoomAdapter() },
+  state: createMemoryState(),
+});
+
+bot.onNewMention(async (thread) => {
+  await thread.post("Hello from Zoom!");
+});
+```
+
+```ts app/api/webhooks/zoom/route.ts
+import { after } from "next/server";
+import { bot } from "@/lib/bot";
+
+export async function POST(request: Request) {
+  return bot.webhooks.zoom(request, { waitUntil: after });
+}
+```
+
+Pass the `Request` through untouched: reading the body first breaks the signature
+check for every event. `Chat` also needs a state adapter, because it connects to
+one during initialization.
+
+## Try it in the browser
+
+The interactive demos run entirely in the page, with no Zoom account or
+credentials, and each sits beside the documentation it illustrates.
+
+- [Webhooks](./webhooks) — what arrives at the endpoint and what the adapter returns.
+- [Thread IDs](./thread-ids) — decode a thread ID and see whether it is a channel or a DM.
+- [Formatting](./formatting) — the Zoom content segments your markdown is converted into.
+
+## For agents and tooling
+
+The docs site publishes the same content in machine-readable forms, so nothing has
+to be scraped out of HTML.
+
+| URL | What it returns |
+| --- | --- |
+| `/llms.txt` | An index of every page, with one-line descriptions |
+| `/llms-full.txt` | The full Markdown of every page in one file |
+| `/<route>.md` | Any page as raw Markdown, for example `/quickstart.md` |
+| `/<route>` with `Accept: text/markdown` | The same Markdown at the page's own URL |
+| `/api/docs/pages.json` | Every page with its route, title, and description |
+| `/openapi.json` | An OpenAPI description of the JSON API |
+| `/agent-readability.json` | Every agent-facing artifact on this site |
+| `/sitemap.xml`, `/robots.txt` | The crawlable URL set and the crawl policy |
+
+A request for a page that does not exist answers `404` in the format the `Accept`
+header asks for, so a broken link returns a short Markdown or JSON explanation
+instead of a page of chrome.
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="API reference" href="./reference" icon="code">
+    Every export and method, with its exact behavior.
+  </Card>
+  <Card title="Limitations" href="./limitations" icon="triangle-alert">
+    What Zoom's platform will not do, and what this adapter has not built.
+  </Card>
+  <Card title="Troubleshooting" href="./troubleshooting" icon="life-buoy">
+    The failure modes that come up, and what each one means.
+  </Card>
+  <Card title="Source" href="https://github.com/aradhyacp/zoom-chat-adapter" icon="github">
+    The adapter on GitHub, and on npm as `zoom-chat-adapter`.
+  </Card>
+</CardGroup>

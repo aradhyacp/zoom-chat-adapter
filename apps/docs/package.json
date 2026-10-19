@@ -7,12 +7,17 @@
     "dev": "blume dev",
     "doctor": "blume doctor",
     "preview": "blume preview",
-    "validate": "blume validate"
+    "test": "vitest run",
+    "validate": "blume validate",
+    "verify": "node scripts/agent-surface.mjs"
   },
   "dependencies": {
     "blume": "^2.2.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.18"
   },
   "engines": {
     "node": ">=22.19"
