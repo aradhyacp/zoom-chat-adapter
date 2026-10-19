@@ -71,18 +71,19 @@ credentials, and each sits beside the documentation it illustrates.
 ## For agents and tooling
 
 The docs site publishes the same content in machine-readable forms, so nothing has
-to be scraped out of HTML.
+to be scraped out of HTML. Every URL below is relative to
+`https://zoom-chat-adapter.vercel.app`.
 
 | URL | What it returns |
 | --- | --- |
-| `/llms.txt` | An index of every page, with one-line descriptions |
-| `/llms-full.txt` | The full Markdown of every page in one file |
-| `/<route>.md` | Any page as raw Markdown, for example `/quickstart.md` |
+| [`/llms.txt`](https://zoom-chat-adapter.vercel.app/llms.txt) | An index of every page, with one-line descriptions |
+| [`/llms-full.txt`](https://zoom-chat-adapter.vercel.app/llms-full.txt) | The full Markdown of every page in one file |
+| `/<route>.md` | Any page as raw Markdown, for example [`/quickstart.md`](https://zoom-chat-adapter.vercel.app/quickstart.md) |
 | `/<route>` with `Accept: text/markdown` | The same Markdown at the page's own URL |
-| `/api/docs/pages.json` | Every page with its route, title, and description |
-| `/openapi.json` | An OpenAPI description of the JSON API |
-| `/agent-readability.json` | Every agent-facing artifact on this site |
-| `/sitemap.xml`, `/robots.txt` | The crawlable URL set and the crawl policy |
+| [`/api/docs/pages.json`](https://zoom-chat-adapter.vercel.app/api/docs/pages.json) | Every page with its route, title, and description |
+| [`/openapi.json`](https://zoom-chat-adapter.vercel.app/openapi.json) | An OpenAPI description of the JSON API |
+| [`/agent-readability.json`](https://zoom-chat-adapter.vercel.app/agent-readability.json) | Every agent-facing artifact on this site |
+| [`/sitemap.xml`](https://zoom-chat-adapter.vercel.app/sitemap.xml), [`/robots.txt`](https://zoom-chat-adapter.vercel.app/robots.txt) | The crawlable URL set and the crawl policy |
 
 A request for a page that does not exist answers `404` in the format the `Accept`
 header asks for, so a broken link returns a short Markdown or JSON explanation
