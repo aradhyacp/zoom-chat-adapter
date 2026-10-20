@@ -2,147 +2,163 @@
 import { useCallback, useMemo, useState } from "react";
 
 /**
- * Mirrors ZoomFormatConverter.toZoomContentBody() in src/markdown.ts: the same
- * block handling, the same inline stripping, and the same places where text is
- * dropped. If the converter changes, change this too — it is a demo of real
+ * Shows the three states of a message: what you write, the Markdown that goes
+ * over the wire, and how Zoom renders that Markdown.
+ *
+ * The wire strings mirror ZoomFormatConverter in src/markdown.ts. If the
+ * converter changes, change these samples too — this is a demo of real
  * behaviour, not an idealised one.
+ *
+ * The key fact the demo exists to show: bold leaves as `*bold*`, because Zoom's
+ * chatbot parser renders `**bold**` as plain text.
  */
 
-interface Segment {
-  style?: { bold?: boolean };
-  text: string;
-  type: "message";
+interface Sample {
+  input: string;
+  wire: string;
 }
 
-const SAMPLES: Record<string, string> = {
-  bullets: "Checks finished:\n\n* api-gateway — passing\n* billing — passing",
-  code: "Latest build:\n\n```\nbuild 4812 ok\n```",
-  dropped: "~Rolled back~ and __confirmed__ in [the console](https://zoom.us)",
-  message:
-    "**Deploy finished**\n\nShipped `api-gateway` to _production_ in 94s.",
+const SAMPLES: Record<string, Sample> = {
+  blocks: {
+    input:
+      "> Rolled back at 14:02\n\n- api-gateway\n- billing\n\n# Incident report",
+    wire: "> Rolled back at 14:02\n\n• api-gateway\n• billing\n\n*Incident report*",
+  },
+  inline: {
+    input:
+      "A **bold** word, an _italic_ one, ~struck~ text, and a `code` span.",
+    wire: "A *bold* word, an _italic_ one, ~struck~ text, and a `code` span.",
+  },
+  limits: {
+    input: "This is __underlined__ text.\n\n| a | b |\n|---|---|\n| 1 | 2 |",
+    wire: "This is underlined text.\n\n*a* | *b*\n1 | 2",
+  },
+  links: {
+    input:
+      "See [the docs](https://example.com).\n\n![logo](https://developers.zoom.us/img/1575498795338.png)",
+    wire: "See the docs <https://example.com>.\n\n<img:https://developers.zoom.us/img/1575498795338.png|logo>",
+  },
+  message: {
+    input:
+      "**Deploy finished**\n\nShipped `api-gateway` to _production_ in 94s.",
+    wire: "*Deploy finished*\n\nShipped `api-gateway` to _production_ in 94s.",
+  },
 };
 
-const CODE_SLOT = "\uE000"; // private-use sentinel, never present in real input
-const CODE_SPAN = /`[^`]+`/g;
-const CODE_SLOT_PATTERN = /\uE000/g;
-const LINK = /\[([^\]]*)\]\([^)]*\)/g;
-const UNDERLINE = /__([^\n_]+?)__/g;
-const STRIKETHROUGH = /(?<!~)~(?!~)([^\n~]+?)~(?!~)/g;
-const BOLD = /\*\*([^*]+)\*\*/g;
-const ITALIC = /(?<!_)_([^_\n]+)_(?!_)/g;
-const ALL_BOLD = /^\*\*[^*]+\*\*$/;
-const HEADING = /^\s*#{1,6}\s+/;
-const BULLET = /^\s*[*-]\s+/;
-const FENCE = "```";
-const DROPPABLE = [UNDERLINE, STRIKETHROUGH, LINK];
+const SAMPLE_KEYS = Object.keys(SAMPLES);
 
-/** Inline handling: code survives, emphasis markers are stripped, and
- *  strikethrough, underline, and link text are dropped entirely. */
-function inline(src: string): string {
-  const codes: string[] = [];
-  let text = src.replace(CODE_SPAN, (match) => {
-    codes.push(match);
-    return CODE_SLOT;
-  });
+const INLINE =
+  /(`[^`\n]+`)|(<img:([^|>\n]+)\|([^>\n]*)>)|(<https?:\/\/[^>\n]+>)|(\*[^*\n]+\*)|(~[^~\n]+~)|(_[^_\n]+_)/g;
 
-  text = text.replace(LINK, ""); // links: dropped
-  text = text.replace(UNDERLINE, ""); // underline: dropped
-  text = text.replace(STRIKETHROUGH, ""); // strikethrough: dropped
-  text = text.replace(BOLD, "$1"); // bold markers: stripped
-  text = text.replace(ITALIC, "$1"); // italic markers: stripped
+const CODE = /^`/;
+const IMAGE = /^<img:/;
+const URL = /^<https?:\/\//;
 
-  const restored = codes[Symbol.iterator]();
-  return text
-    .replace(CODE_SLOT_PATTERN, () => restored.next().value ?? "")
-    .trim();
-}
+/** Turn one line of Zoom Markdown into the nodes a Zoom client would render. */
+function inlineNodes(text: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
 
-function toSegments(src: string): Segment[] {
-  const segments: Segment[] = [];
-  let paragraph: string[] = [];
-  let fence: string[] | null = null;
-
-  const flushParagraph = () => {
-    if (paragraph.length === 0) {
-      return;
+  INLINE.lastIndex = 0;
+  for (let match = INLINE.exec(text); match; match = INLINE.exec(text)) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
     }
-    const joined = paragraph.join(" ");
-    const text = inline(joined);
-    paragraph = [];
-    if (!text) {
-      return;
-    }
-    segments.push(
-      ALL_BOLD.test(joined.trim())
-        ? { style: { bold: true }, text, type: "message" }
-        : { text, type: "message" }
-    );
-  };
 
-  const flushFence = () => {
-    if (fence) {
-      segments.push({
-        text: `${FENCE}\n${fence.join("\n")}\n${FENCE}`,
-        type: "message",
-      });
-      fence = null;
-    }
-  };
+    const [token, , , , alt] = match;
+    const key = `${match.index}:${token}`;
 
-  for (const line of src.split("\n")) {
-    if (line.trim().startsWith(FENCE)) {
-      if (fence) {
-        flushFence();
-      } else {
-        flushParagraph();
-        fence = [];
-      }
-    } else if (fence) {
-      fence.push(line);
-    } else if (!line.trim()) {
-      flushParagraph();
-    } else if (HEADING.test(line)) {
-      flushParagraph();
-      const text = inline(line.replace(HEADING, ""));
-      if (text) {
-        segments.push({ style: { bold: true }, text, type: "message" });
-      }
-    } else if (BULLET.test(line)) {
-      flushParagraph();
-      segments.push({
-        text: `• ${inline(line.replace(BULLET, ""))}`,
-        type: "message",
-      });
+    if (CODE.test(token)) {
+      nodes.push(<code key={key}>{token.slice(1, -1)}</code>);
+    } else if (IMAGE.test(token)) {
+      nodes.push(
+        <span className="demo-chip" key={key}>
+          image{alt ? `: ${alt}` : ""}
+        </span>
+      );
+    } else if (URL.test(token)) {
+      nodes.push(
+        <span className="demo-link" key={key}>
+          {token.slice(1, -1)}
+        </span>
+      );
+    } else if (token.startsWith("*")) {
+      nodes.push(<strong key={key}>{token.slice(1, -1)}</strong>);
+    } else if (token.startsWith("~")) {
+      nodes.push(<s key={key}>{token.slice(1, -1)}</s>);
     } else {
-      paragraph.push(line);
+      nodes.push(<em key={key}>{token.slice(1, -1)}</em>);
     }
+
+    lastIndex = match.index + token.length;
   }
 
-  flushParagraph();
-  flushFence();
-  return segments.length > 0 ? segments : [{ text: "", type: "message" }];
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
+function renderWire(wire: string): React.ReactNode {
+  const blocks: string[][] = [];
+  let current: string[] = [];
+
+  for (const line of wire.split("\n")) {
+    if (line.trim() === "") {
+      if (current.length > 0) {
+        blocks.push(current);
+        current = [];
+      }
+    } else {
+      current.push(line);
+    }
+  }
+  if (current.length > 0) {
+    blocks.push(current);
+  }
+
+  return blocks.map((lines, blockIndex) => (
+    <div className="demo-block" key={blockIndex}>
+      {lines.map((line, lineIndex) => {
+        if (line.startsWith("> ")) {
+          return (
+            <p className="demo-quote" key={lineIndex}>
+              {inlineNodes(line.slice(2))}
+            </p>
+          );
+        }
+        if (line.startsWith("• ")) {
+          return (
+            <p className="demo-bullet" key={lineIndex}>
+              • {inlineNodes(line.slice(2))}
+            </p>
+          );
+        }
+        return (
+          <p className="demo-line" key={lineIndex}>
+            {inlineNodes(line)}
+          </p>
+        );
+      })}
+    </div>
+  ));
 }
 
 export default function FormatPreview() {
-  const [sample, setSample] = useState<keyof typeof SAMPLES>("message");
-  const text = SAMPLES[sample];
-  const segments = useMemo(() => toSegments(text), [text]);
+  const [sample, setSample] = useState<string>("message");
+  const selected = SAMPLES[sample];
+  const rendered = useMemo(() => renderWire(selected.wire), [selected.wire]);
 
   const pick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    setSample(event.currentTarget.dataset.sample as keyof typeof SAMPLES);
+    setSample(event.currentTarget.dataset.sample ?? "message");
   }, []);
-
-  // Anything the converter silently discards, spotted in the input itself.
-  const hasDropped = DROPPABLE.some((pattern) => {
-    pattern.lastIndex = 0;
-    return pattern.test(text);
-  });
 
   return (
     <div className="demo">
-      <p className="demo-label">What Zoom receives</p>
+      <p className="demo-label">The same message, three ways</p>
       <div className="demo-choices">
-        {Object.keys(SAMPLES).map((key) => (
+        {SAMPLE_KEYS.map((key) => (
           <button
             aria-pressed={key === sample}
             className="demo-choice"
@@ -157,29 +173,32 @@ export default function FormatPreview() {
       </div>
 
       <div className="demo-out">
-        <p className="demo-out-label">Zoom shows</p>
-        <div style={{ fontSize: 15, lineHeight: 1.6 }}>
-          {segments.map((segment, index) => (
-            <p
-              key={index}
-              style={{
-                color: "var(--graphite)",
-                fontWeight: segment.style?.bold ? 600 : 400,
-                margin: "0 0 4px",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {segment.text || "\u00A0"}
-            </p>
-          ))}
-        </div>
+        <p className="demo-out-label">You write (Chat SDK markdown)</p>
+        <pre className="demo-json">{selected.input}</pre>
       </div>
 
-      {hasDropped && (
+      <div className="demo-out">
+        <p className="demo-out-label">Zoom receives</p>
+        <pre className="demo-json">{selected.wire}</pre>
+      </div>
+
+      <div className="demo-out">
+        <p className="demo-out-label">Zoom shows</p>
+        <div className="demo-render">{rendered}</div>
+      </div>
+
+      {sample === "limits" && (
         <p className="demo-note">
-          Strikethrough, underline, and link text are gone: Zoom's segments
-          cannot carry them, so the converter drops those words rather than
-          sending markup. See the table below.
+          Underline and tables have no Zoom token. The words and cells survive
+          as plain text; the styling does not. See the table below.
+        </p>
+      )}
+
+      {sample === "links" && (
+        <p className="demo-note">
+          The label is kept and the URL is clickable. The image only appears if
+          its host is on Zoom's trusted-domain list —{" "}
+          <code>developers.zoom.us</code> is.
         </p>
       )}
     </div>

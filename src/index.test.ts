@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { ValidationError } from "@chat-adapter/shared";
 import type { ChatInstance } from "chat";
+import { paragraph, root, strong, text } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createZoomAdapter } from "./index.js";
 import type { ZoomMessageWithReply } from "./types.js";
@@ -521,6 +522,92 @@ describe("ZoomAdapter — postMessage (MSG-01, MSG-02)", () => {
     expect(hasThrd03Warning).toBe(true);
   });
 
+  it("MSG-04-a: sends is_markdown_support by default and keeps strikethrough text", async () => {
+    const fetchMock = mockFetch(200, { message_id: "msg-uuid-md" });
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = createZoomAdapter(TEST_CREDENTIALS);
+    vi.spyOn(adapter, "getAccessToken").mockResolvedValue("test-token");
+
+    await adapter.postMessage(
+      "zoom:chan@conference.xmpp.zoom.us:msg-md",
+      "This is ~struck~ text"
+    );
+
+    const callBody = JSON.parse(
+      (fetchMock.mock.calls[0][1] as { body: string }).body
+    ) as {
+      content: { body: { style?: unknown; text: string }[] };
+      is_markdown_support?: boolean;
+    };
+    expect(callBody.is_markdown_support).toBe(true);
+    expect(callBody.content.body).toEqual([
+      { text: "This is ~struck~ text", type: "message" },
+    ]);
+  });
+
+  it("MSG-04-b: keeps a markdown link's label and makes the URL clickable", async () => {
+    const fetchMock = mockFetch(200, { message_id: "msg-uuid-link" });
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = createZoomAdapter(TEST_CREDENTIALS);
+    vi.spyOn(adapter, "getAccessToken").mockResolvedValue("test-token");
+
+    await adapter.postMessage("zoom:chan@conference.xmpp.zoom.us:msg-link", {
+      markdown: "See [the docs](https://example.com) for more",
+    } as unknown as import("./index.js").AdapterPostableMessage);
+
+    const callBody = JSON.parse(
+      (fetchMock.mock.calls[0][1] as { body: string }).body
+    ) as { content: { body: { text: string }[] } };
+    expect(callBody.content.body[0].text).toBe(
+      "See the docs <https://example.com> for more"
+    );
+  });
+
+  it("MSG-04-d: an { ast } message keeps bold instead of degrading to italic", async () => {
+    const fetchMock = mockFetch(200, { message_id: "msg-uuid-ast" });
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = createZoomAdapter(TEST_CREDENTIALS);
+    vi.spyOn(adapter, "getAccessToken").mockResolvedValue("test-token");
+
+    await adapter.postMessage("zoom:chan@conference.xmpp.zoom.us:msg-ast", {
+      ast: root([
+        paragraph([strong([text("AST Demo")]), text(" - built with mdast")]),
+      ]),
+    } as unknown as import("./index.js").AdapterPostableMessage);
+
+    const callBody = JSON.parse(
+      (fetchMock.mock.calls[0][1] as { body: string }).body
+    ) as { content: { body: { text: string }[] } };
+    // `*AST Demo*` is Zoom bold; `_AST Demo_` would be the round-trip bug.
+    expect(callBody.content.body[0].text).toBe("*AST Demo* - built with mdast");
+  });
+
+  it("MSG-04-c: markdownSupport false falls back to structured segments", async () => {
+    const fetchMock = mockFetch(200, { message_id: "msg-uuid-plain" });
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = createZoomAdapter({
+      ...TEST_CREDENTIALS,
+      markdownSupport: false,
+    });
+    vi.spyOn(adapter, "getAccessToken").mockResolvedValue("test-token");
+
+    await adapter.postMessage(
+      "zoom:chan@conference.xmpp.zoom.us:msg-plain",
+      "**entire line bold**"
+    );
+
+    const callBody = JSON.parse(
+      (fetchMock.mock.calls[0][1] as { body: string }).body
+    ) as {
+      content: { body: { style?: unknown; text: string }[] };
+      is_markdown_support?: boolean;
+    };
+    expect(callBody.is_markdown_support).toBeUndefined();
+    expect(callBody.content.body).toEqual([
+      { style: { bold: true }, text: "entire line bold", type: "message" },
+    ]);
+  });
+
   it("zoomFetch-error: non-2xx response throws Error with operation name and status code", async () => {
     const fetchMock = mockFetch(403, { error: "Forbidden" });
     vi.stubGlobal("fetch", fetchMock);
@@ -575,6 +662,7 @@ describe("ZoomAdapter — editMessage (MSG-03)", () => {
       robot_jid: TEST_CREDENTIALS.robotJid,
     });
     expect(callBody).toHaveProperty("content.body");
+    expect(callBody).toHaveProperty("is_markdown_support", true);
   });
 
   it("MSG-03-b: editMessage returns RawMessage with id and threadId (204 No Content)", async () => {

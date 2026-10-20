@@ -3,8 +3,8 @@ title: Limitations
 description: What Zoom's platform will not do, what this adapter has not built yet, and which is which.
 ---
 
-Two of these come from Zoom and cannot be fixed here. The rest is scope. Read
-this before you design a feature around threads or history.
+Several of these come from Zoom and cannot be fixed here. The rest is scope. Read
+this before you design a feature around threads, history, or formatting.
 
 ## Zoom's platform
 
@@ -36,6 +36,26 @@ verification and come back `401`. This is tracked by Zoom as **ZOOM-506645**.
 The adapter writes the first 200 bytes of the body as hex to the logger at
 `debug` level when a comparison fails, which is the evidence to attach when you
 contact Zoom Support citing that number.
+
+### Some formatting has no Zoom token
+
+Zoom's Markdown parser renders bold, italic, strikethrough, block quotes, links,
+and images. It has no token for:
+
+- **Underline** — `__text__` becomes plain text.
+- **Tables** — rendered as pipe-separated text rows, with the header in bold.
+- **Headings** — a heading becomes a bold line.
+- **Lists** — list items become `•` bullets.
+
+The words and data are kept; only the styling is lost. [Formatting](./formatting)
+shows every mapping.
+
+### Images only render from trusted domains
+
+The image token is sent correctly, but the Zoom client drops images from hosts it
+does not trust, logging `[Security] Blocked image from untrusted domain`. Add the
+host to your app's trusted-domain list, or use one Zoom already trusts, such as
+`developers.zoom.us`. This is a client-side rule; the adapter cannot override it.
 
 ## This adapter
 

@@ -71,10 +71,25 @@ ESM too (`"type": "module"`, or a `.mjs` file).
 
 </Accordion>
 
-<Accordion title="Bold text arrives as plain text in Zoom">
+<Accordion title="Bold or links arrive as plain text">
 
-Expected. Inline emphasis is flattened and strikethrough, underline, and link
-text are dropped on the way out — [Formatting](./formatting) has the full table
-and the workaround.
+Check that Markdown mode is on: `markdownSupport` defaults to `true`, so only an
+explicit `false` (or `ZOOM_MARKDOWN_SUPPORT=false`) turns it off. If you develop
+against a local copy of the package, rebuild it — a `file:` dependency is a
+snapshot, so `pnpm build` alone does not update it. A `link:` dependency or a
+reinstall picks up the new `dist/`.
+
+Also note that Zoom's chatbot parser uses `*bold*`, not `**bold**`, for bold. The
+adapter already sends the right token; if you are constructing raw payloads
+yourself, `**text**` renders as plain text. [Formatting](./formatting) has the
+verified token table.
+
+</Accordion>
+
+<Accordion title="Underline or a table does nothing">
+
+Expected. Zoom's Markdown parser has no underline token and no table token. The
+words and cells are still sent as plain text. See
+[Formatting](./formatting).
 
 </Accordion>

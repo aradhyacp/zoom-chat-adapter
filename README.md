@@ -19,7 +19,7 @@
 ## Highlights
 
 - **One webhook, one route.** Answers Zoom's setup challenge, verifies the HMAC signature, and turns events into ordinary Chat threads.
-- **Post, edit, delete, reply.** Markdown is converted to Zoom's structured content segments for you.
+- **Post, edit, delete, reply.** Your markdown is converted to Zoom's own Markdown dialect — bold, italic, strikethrough, quotes, links, and images — with a structured-segment fallback.
 - **Channel or DM, from the JID.** Thread IDs carry the Zoom JID, so you can tell the two apart.
 - **Honest about gaps.** Calls Zoom cannot support throw `NotImplementedError` instead of failing quietly. See [Known limitations](#known-limitations).
 
@@ -76,7 +76,7 @@ Full guides live at **[zoom-chat-adapter.vercel.app](https://zoom-chat-adapter.v
 | [Configuration](https://zoom-chat-adapter.vercel.app/configuration) | Every option and its environment variable |
 | [Webhooks](https://zoom-chat-adapter.vercel.app/webhooks) | Setup challenge, signature checks, event dispatch |
 | [Messaging](https://zoom-chat-adapter.vercel.app/messaging) | Sending, editing, deleting, and threaded replies |
-| [Formatting](https://zoom-chat-adapter.vercel.app/formatting) | Markdown to Zoom content segments |
+| [Formatting](https://zoom-chat-adapter.vercel.app/formatting) | Markdown to Zoom's dialect, and what Zoom cannot render |
 | [Thread IDs](https://zoom-chat-adapter.vercel.app/thread-ids) | The thread format, channel versus DM |
 | [API reference](https://zoom-chat-adapter.vercel.app/reference) | Every export and method |
 | [Limitations](https://zoom-chat-adapter.vercel.app/limitations) | What Zoom will not do, and what is not built yet |
@@ -175,6 +175,7 @@ All options fall back to environment variables when not provided.
 | `robotJid` | No* | Bot's JID. Auto-detected from `ZOOM_ROBOT_JID` |
 | `webhookSecretToken` | No* | Webhook secret token. Auto-detected from `ZOOM_WEBHOOK_SECRET_TOKEN` |
 | `userName` | No | Bot username. Auto-detected from `ZOOM_BOT_USERNAME` (defaults to `zoom-bot`) |
+| `markdownSupport` | No | Send with Zoom's Markdown parser enabled. Auto-detected from `ZOOM_MARKDOWN_SUPPORT` (defaults to `true`) |
 | `logger` | No | Logger instance (defaults to `ConsoleLogger("info")`) |
 
 *Required at runtime — either via config or environment variable.
@@ -206,7 +207,9 @@ createZoomAdapter({
 
 ## Formatting
 
-The adapter converts Chat SDK markdown to Zoom's message format automatically.
+The adapter converts Chat SDK markdown to Zoom's format automatically. By default
+it sends with Zoom's Markdown parser enabled (`is_markdown_support: true`), because
+that is the only mode that can render links, strikethrough, block quotes and images.
 
 | Syntax | Renders as |
 | :-- | :-- |
@@ -214,9 +217,29 @@ The adapter converts Chat SDK markdown to Zoom's message format automatically.
 | `_italic_` | Italic |
 | `` `code` `` | Inline code |
 | `~strikethrough~` | Strikethrough |
-| `__underline__` | Underline |
-| `# heading` | Heading |
-| `* item` | List item |
+| `> quote` | Block quote |
+| `[label](https://example.com)` | `label <https://example.com>` (clickable URL) |
+| `![alt](https://example.com/a.png)` | Zoom image token with alt text |
+| `# heading` | Bold line (Zoom has no heading token) |
+| `* item` | Bullet line |
+| `__underline__` | Plain text — **Zoom has no underline token** |
+| `\| a \| b \|` tables | Pipe-separated text — **Zoom has no table token** |
+
+Bold leaves as Zoom's single-asterisk form (`*bold*`). The chatbot parser renders
+`**bold**` as plain text, despite what Zoom's syntax table says — its own request
+example uses the single form. Write standard Markdown (`**bold**`) and let the
+adapter translate.
+
+Set `markdownSupport: false` (or `ZOOM_MARKDOWN_SUPPORT=false`) to send structured
+plain-text segments. That mode bolds a paragraph only when the whole paragraph is
+bold; inline bold and italic are flattened, and links, strikethrough, block quotes
+and images lose their formatting (their text is still preserved).
+
+> **Image domains:** the Zoom client only renders images from domains it trusts. Images
+> on other hosts (including Unsplash) are silently dropped client-side with a
+> `[Security] Blocked image from untrusted domain` console warning. This is a Zoom client
+> rule, not an adapter setting. Add the host to your app's trusted domains, or use a host
+> the client already trusts (e.g. `developers.zoom.us`).
 
 ## Thread ID format
 

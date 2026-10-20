@@ -7,6 +7,14 @@ export interface ZoomAdapterConfig {
   clientId?: string;
   clientSecret?: string;
   logger?: Logger;
+  /**
+   * Send messages with Zoom's Markdown parser enabled (default: true).
+   *
+   * Markdown mode is the only way to get links, strikethrough, block quotes
+   * and images, because the structured body API only supports bold/italic.
+   * Set to false to fall back to structured segments.
+   */
+  markdownSupport?: boolean;
   robotJid?: string;
   userName?: string;
   webhookSecretToken?: string;
@@ -24,6 +32,8 @@ export interface ZoomAdapterInternalConfig {
   clientId: string;
   clientSecret: string;
   logger: Logger;
+  /** Enable Zoom's Markdown parser on send/edit requests (default true). */
+  markdownSupport: boolean;
   robotJid: string;
   userName: string;
   webhookSecretToken: string;

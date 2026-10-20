@@ -24,8 +24,8 @@ bot.onNewMention(async (thread, message) => {
 });
 ```
 
-The reply is converted to Zoom's content segments (see
-[Formatting](./formatting)) and posted to `/v2/im/chat/messages` with the
+The reply is converted to Zoom Markdown and posted to `/v2/im/chat/messages`
+with `is_markdown_support: true` (see [Formatting](./formatting)), along with the
 account ID, the bot's JID, the thread's channel JID, and — when the adapter has
 one — the JID of the person whose message started the thread. Zoom's chatbot API
 expects that last field, and the adapter remembers it from the webhook that

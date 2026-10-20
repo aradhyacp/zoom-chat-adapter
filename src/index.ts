@@ -362,8 +362,10 @@ export class ZoomAdapter implements Adapter {
       return { id: String(Date.now()), raw: {}, threadId };
     }
 
-    const ast = this.formatConverter.toAst(markdown);
-    const contentBody = this.formatConverter.toZoomContentBody(ast);
+    const ast = this.formatConverter.toAstFromPostable(message);
+    const contentBody = this.formatConverter.toZoomContentBody(ast, {
+      markdown: this.config.markdownSupport,
+    });
 
     // MSG-02: threading — add reply_main_message_id if present
     // ZoomMessageWithReply is the Zoom-specific extension type for threaded replies
@@ -384,6 +386,7 @@ export class ZoomAdapter implements Adapter {
       content: {
         body: contentBody,
       },
+      ...(this.config.markdownSupport ? { is_markdown_support: true } : {}),
       ...(replyTo ? { reply_main_message_id: replyTo } : {}),
     };
 
@@ -408,9 +411,10 @@ export class ZoomAdapter implements Adapter {
     messageId: string,
     message: AdapterPostableMessage
   ): Promise<RawMessage<unknown>> {
-    const markdown = this.formatConverter.renderPostable(message);
-    const ast = this.formatConverter.toAst(markdown);
-    const contentBody = this.formatConverter.toZoomContentBody(ast);
+    const ast = this.formatConverter.toAstFromPostable(message);
+    const contentBody = this.formatConverter.toZoomContentBody(ast, {
+      markdown: this.config.markdownSupport,
+    });
     const editUserJid = this.threadUserJid.get(threadId);
     await this.zoomFetch(
       `https://api.zoom.us/v2/im/chat/messages/${messageId}`,
@@ -420,6 +424,7 @@ export class ZoomAdapter implements Adapter {
           robot_jid: this.config.robotJid,
           ...(editUserJid ? { user_jid: editUserJid } : {}),
           content: { body: contentBody },
+          ...(this.config.markdownSupport ? { is_markdown_support: true } : {}),
         }),
         method: "PUT",
       },
@@ -582,8 +587,21 @@ export function createZoomAdapter(config?: ZoomAdapterConfig): ZoomAdapter {
     clientId,
     clientSecret,
     logger,
+    markdownSupport: resolveMarkdownSupport(config?.markdownSupport),
     robotJid,
     userName,
     webhookSecretToken,
   });
+}
+
+/** Env var wins only when config is undefined; unset means enabled. */
+function resolveMarkdownSupport(explicit: boolean | undefined): boolean {
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  const env = process.env.ZOOM_MARKDOWN_SUPPORT;
+  if (env === undefined || env === "") {
+    return true;
+  }
+  return env !== "false" && env !== "0";
 }
