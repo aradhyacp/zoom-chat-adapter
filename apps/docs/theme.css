@@ -716,6 +716,53 @@ article thead th {
   white-space: pre;
 }
 
+.demo-render {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--graphite);
+}
+
+.demo-block {
+  margin-bottom: 12px;
+}
+
+.demo-block:last-child {
+  margin-bottom: 0;
+}
+
+.demo-line,
+.demo-quote,
+.demo-bullet {
+  margin: 2px 0;
+}
+
+.demo-quote {
+  padding-left: 12px;
+  font-style: italic;
+  border-left: 3px solid var(--hairline-strong);
+}
+
+.demo-bullet {
+  padding-left: 12px;
+}
+
+.demo-chip {
+  display: inline-block;
+  padding: 0 6px;
+  font-family: var(--blume-font-mono);
+  font-size: 12px;
+  color: var(--smoke);
+  background: var(--taupe);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-pill);
+}
+
+.demo-link {
+  color: var(--blume-accent, #2d8cff);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .demo-note {
   margin: 12px 0 0;
   font-size: 13px;
