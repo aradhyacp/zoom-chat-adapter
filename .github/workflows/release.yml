@@ -30,13 +30,20 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
-      # Trusted Publishing needs npm >= 11.5.1 and Node >= 22.14.
+      # Trusted Publishing needs npm >= 11.5.1 and Node >= 22.14. No
+      # `registry-url` on purpose: it makes setup-node write an .npmrc with a
+      # placeholder NODE_AUTH_TOKEN, which can shadow the OIDC exchange.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-          registry-url: https://registry.npmjs.org
+
+      - name: Print toolchain versions
+        run: |
+          node --version
+          npm --version
+          pnpm --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
