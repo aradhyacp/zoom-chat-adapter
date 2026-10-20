@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# One release run at a time, and never cancel one that is mid-publish.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Version PR / publish
+    runs-on: ubuntu-latest
+    # Never run on forks.
+    if: github.repository == 'aradhyacp/zoom-chat-adapter'
+    permissions:
+      contents: write        # push the version branch, create tags and releases
+      pull-requests: write   # open/update the "Version Packages" PR
+      id-token: write        # npm Trusted Publishing (OIDC) + provenance
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Version comes from `packageManager` in package.json.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      # Trusted Publishing needs npm >= 11.5.1 and Node >= 22.14.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify
+        run: |
+          pnpm check
+          pnpm typecheck
+          pnpm test
+
+      # No NPM_TOKEN anywhere: `changeset publish` calls `npm publish`, which
+      # exchanges this job's OIDC identity for a short-lived publish credential.
+      - name: Create Version PR or publish
+        uses: changesets/action@v1
+        with:
+          version: pnpm run version
+          publish: pnpm run release
+          title: "chore: version packages"
+          commit: "chore: version packages"
+          # Commits made through the GitHub API are signed by GitHub, which
+          # satisfies the verify-signed-commits workflow on the Version PR.
+          commitMode: github-api
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
