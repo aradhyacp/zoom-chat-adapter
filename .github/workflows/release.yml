@@ -75,3 +75,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Workaround for https://github.com/changesets/action/pull/545
           NPM_TOKEN: ""
+
+      # changesets/action only pushes tags and creates GitHub Releases when the
+      # publish output contains `New tag:` lines. @changesets/cli v3 prints
+      # `Created git tags:` instead, so the action sees nothing published and the
+      # tags created by `changeset publish` are lost with the runner. Do it here:
+      # tags exist on HEAD only when this run just published a release.
+      - name: Push tags and create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for tag in $(git tag --points-at HEAD); do
+            version="${tag##*@}"
+            git push origin "refs/tags/$tag"
+            awk -v v="$version" '/^## /{p=($2==v)} p' CHANGELOG.md > release-notes.md
+            gh release create "$tag" --verify-tag --title "$tag" --notes-file release-notes.md
+          done
