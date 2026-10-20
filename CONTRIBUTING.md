@@ -73,6 +73,34 @@ grep -n "interface Adapter" node_modules/chat/dist/index.d.ts
    - Test/build/typecheck results
    - Any Zoom platform behavior worth noting
 
+### Changesets
+
+If your PR changes anything users of the package will notice (feature, fix, behaviour
+change), add a changeset:
+
+```bash
+pnpm changeset
+```
+
+Choose `patch`, `minor` or `major`, write a one-line user-facing summary, and commit the
+generated `.changeset/*.md` file. Docs-, test- and CI-only PRs don't need one.
+
+## Releasing
+
+Releases are automated by [Changesets](https://github.com/changesets/changesets) and
+`.github/workflows/release.yml`. Maintainers never bump versions or run `npm publish` by hand.
+
+1. PRs with changesets merge into `main`.
+2. The workflow opens (or updates) a **"chore: version packages"** PR that bumps
+   `package.json` and writes `CHANGELOG.md`.
+3. Merging that PR makes the workflow build, publish to npm, tag the release and create a
+   GitHub Release.
+
+Publishing uses [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (OIDC):
+there is no `NPM_TOKEN` secret. The trusted publisher on npmjs.com must be configured for
+repository `aradhyacp/zoom-chat-adapter`, workflow filename `release.yml`. Published versions
+carry a provenance attestation.
+
 ### Commit messages
 
 We follow [Conventional Commits](https://www.conventionalcommits.org/):
