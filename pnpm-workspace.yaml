@@ -1,4 +1,6 @@
 packages:
+  # The root is the published package; Changesets only sees workspace members.
+  - .
   - apps/*
 allowBuilds:
   esbuild: true
