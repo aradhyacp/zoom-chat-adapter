@@ -1,8 +1,5 @@
 ---
+"zoom-chat-adapter": patch
 ---
 
-Added a pull request template and changeset message guidelines.
-
-- Added `.github/pull_request_template.md` for consistent PR descriptions
-- Documented the changeset message format in `.cursorrules`
-- No changes to the published package
+Add a pull request template and changeset guidelines for contributors. Releases now run through Changesets with npm Trusted Publishing and provenance.
