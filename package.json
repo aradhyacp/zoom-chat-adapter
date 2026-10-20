@@ -1,6 +1,6 @@
 {
   "name": "zoom-chat-adapter",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Zoom Team Chat adapter for chat-sdk",
   "keywords": [
     "chat",
