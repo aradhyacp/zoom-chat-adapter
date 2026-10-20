@@ -1,11 +1,28 @@
 /**
  * Zoom-specific format conversion using AST-based parsing.
  *
- * Zoom Team Chat uses a markdown-like format with two differences from standard:
- * - Underline: __text__ (double underscore, not standard markdown)
- * - Strikethrough: ~text~ (single tilde, standard uses double ~~text~~)
+ * Zoom Team Chat has two ways to render a message body:
  *
- * All other tokens (**bold**, _italic_, `code`, # heading, * list) are standard.
+ * 1. Structured segments (`is_markdown_support` off). Each body item is plain
+ *    text plus an optional `style: { bold, italic }`. This cannot express
+ *    links, strikethrough, block quotes or images, so those were previously
+ *    flattened away — the text inside them simply disappeared.
+ *
+ * 2. Markdown (`is_markdown_support: true`). Zoom parses the body text and
+ *    supports *bold*, _italic_, ~strikethrough~, `monospace`,
+ *    "> block quote", <https://links>, <img:url|alt> images and mentions.
+ *    When this is on, Zoom ignores `style`, so all formatting must live in
+ *    the text itself.
+ *
+ * This converter defaults to Markdown mode because it is the only mode that
+ * can render more than bold/italic. Set `markdownSupport: false` to fall back
+ * to structured segments.
+ *
+ * Zoom platform limits (not fixable in this adapter):
+ * - There is no underline token. `__text__` is therefore emitted as plain
+ *   text; the words are kept, the underline styling is not.
+ * - There are no table tokens. Tables are rendered as pipe-separated text so
+ *   the data is preserved instead of dropped.
  */
 
 import type { AdapterPostableMessage } from "chat";
@@ -15,49 +32,254 @@ import {
   convertEmojiPlaceholders,
   parseMarkdown,
   type Root,
-  stringifyMarkdown,
   walkAst,
 } from "chat";
-import type { Heading, List, ListItem, PhrasingContent, Text } from "mdast";
+import type {
+  Blockquote,
+  Code,
+  Heading,
+  Image,
+  Link,
+  List,
+  Paragraph,
+  PhrasingContent,
+  Table,
+  Text,
+} from "mdast";
 import type { UnderlineNode } from "./types.js";
 
 export interface ZoomContentBodyItem {
-  is_markdown_support?: boolean;
   style?: { bold?: boolean; italic?: boolean };
   text: string;
   type: "message";
 }
 
+/** Options for converting an AST into a Zoom message body. */
+export interface ZoomContentBodyOptions {
+  /**
+   * Emit Markdown and let Zoom parse it. Required for links, strikethrough,
+   * block quotes and images — the structured `style` API cannot express them.
+   */
+  markdown?: boolean;
+}
+
+/** Standard phrasing content plus the adapter's private underline node. */
+type ZoomPhrasingContent = PhrasingContent | UnderlineNode;
+
+/** Placeholders used to hide code spans from the Zoom token regexes. */
+const PROTECT_START = "\uE000";
+const PROTECT_END = "\uE001";
+const PROTECT_PATTERN = /\uE000(\d+)\uE001/g;
+
 const resolveText = (text: string): string =>
   convertEmojiPlaceholders(text, "whatsapp");
 
-// Extract plain text from phrasing content nodes (strips bold/italic markers)
-const extractText = (nodes: PhrasingContent[]): string =>
-  nodes
-    .map((node) => {
-      if (node.type === "text") {
-        return resolveText((node as Text).value);
-      }
-      if (node.type === "strong" || node.type === "emphasis") {
-        return extractText(node.children as PhrasingContent[]);
-      }
-      if (node.type === "inlineCode") {
-        return `\`${node.value}\``;
-      }
-      if (node.type === "html") {
-        return resolveText((node as { type: "html"; value: string }).value);
-      }
-      return "";
-    })
-    .join("");
+/** Characters that would otherwise be read as Zoom Markdown syntax. */
+const ZOOM_MARKDOWN_SPECIAL = /[\\*_~`<>]/g;
 
-// Check if ALL phrasing nodes are bold (entire paragraph is bold)
+const escapeText = (value: string): string =>
+  value.replace(ZOOM_MARKDOWN_SPECIAL, "\\$&");
+
+const codeSpan = (value: string): string => {
+  const fence = value.includes("`") ? "``" : "`";
+  return `${fence}${value}${fence}`;
+};
+
+const childrenOf = (node: unknown): PhrasingContent[] =>
+  (node as { children: PhrasingContent[] }).children;
+
+const blockChildrenOf = (node: unknown): Content[] =>
+  (node as { children: Content[] }).children;
+
+// ---------------------------------------------------------------------------
+// Markdown mode: AST -> Zoom Markdown
+// ---------------------------------------------------------------------------
+
+function inlineNodes(nodes: readonly ZoomPhrasingContent[]): string {
+  return nodes.map((node) => inlineNode(node)).join("");
+}
+
+function inlineNode(node: ZoomPhrasingContent): string {
+  const { type } = node as { type: string };
+  switch (type) {
+    case "text":
+      return escapeText(resolveText((node as Text).value));
+    case "strong":
+      // Zoom's chatbot Markdown parser uses the LEGACY single-asterisk bold.
+      // Its docs table says `**text**`, but that renders as plain text — the
+      // request example in the same page uses `*text*`.
+      // Verified against the live client: `*x*` and `***x***` render bold;
+      // `**x**` and `__x__` render plain. `_x_` is italic, `~x~` strike.
+      return `*${inlineNodes(childrenOf(node))}*`;
+    case "emphasis":
+      return `_${inlineNodes(childrenOf(node))}_`;
+    case "delete":
+      return `~${inlineNodes(childrenOf(node))}~`;
+    case "inlineCode":
+      return codeSpan((node as { value: string }).value);
+    case "link":
+      return linkToZoom(node as Link);
+    case "image":
+      return imageToZoom(node as Image);
+    case "break":
+      return "\n";
+    case "html":
+      return resolveText((node as { value: string }).value);
+    case "underline":
+      // Zoom has no underline token. Keep the words, drop the styling rather
+      // than leaking literal __underscores__ into the message.
+      return inlineNodes(childrenOf(node));
+    default:
+      return "";
+  }
+}
+
+function linkToZoom(node: Link): string {
+  const label = inlineNodes(node.children).trim();
+  if (!label || label === node.url) {
+    return `<${node.url}>`;
+  }
+  // Zoom documents only the bare <url> form. Keeping the label as text means
+  // the words the author wrote survive, and the URL stays clickable.
+  return `${label} <${node.url}>`;
+}
+
+function imageToZoom(node: Image): string {
+  const alt = node.alt?.trim();
+  return alt ? `<img:${node.url}|${alt}>` : `<img:${node.url}>`;
+}
+
+function blockNodes(blocks: readonly Content[]): string {
+  return blocks
+    .map((block) => blockNode(block))
+    .filter((text) => text.length > 0)
+    .join("\n\n");
+}
+
+function blockNode(block: Content): string {
+  const { type } = block as { type: string };
+  switch (type) {
+    case "paragraph":
+      return inlineNodes(childrenOf(block));
+    case "heading":
+      // Zoom has no heading token, so a heading becomes a bold line.
+      return `*${inlineNodes(childrenOf(block))}*`;
+    case "blockquote":
+      return quoteBlock(block as Blockquote);
+    case "list":
+      return listBlock(block as List);
+    case "code":
+      return codeBlock(block as Code);
+    case "table":
+      return tableBlock(block as Table);
+    case "thematicBreak":
+      return "──────────";
+    case "html":
+      return (block as { value: string }).value;
+    default:
+      return "";
+  }
+}
+
+function quoteBlock(block: Blockquote): string {
+  return blockNodes(blockChildrenOf(block))
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n");
+}
+
+function listItemChild(child: Content): string {
+  const { type } = child as { type: string };
+  if (type === "paragraph") {
+    return inlineNodes(childrenOf(child));
+  }
+  if (type === "list") {
+    return listBlock(child as List);
+  }
+  return "";
+}
+
+function listBlock(list: List): string {
+  return list.children
+    .map((item, index) => {
+      // Zoom does not document list tokens, but a real bullet always renders.
+      const marker = list.ordered ? `${(list.start ?? 1) + index}. ` : "• ";
+      const body = blockChildrenOf(item)
+        .map((child) => listItemChild(child))
+        .filter((text) => text.length > 0)
+        .join("\n");
+      return `${marker}${body}`;
+    })
+    .join("\n");
+}
+
+function codeBlock(block: Code): string {
+  return `\`\`\`${block.lang ?? ""}\n${block.value}\n\`\`\``;
+}
+
+function tableBlock(table: Table): string {
+  return table.children
+    .map((row, rowIndex) =>
+      row.children
+        .map((cell) => {
+          const value = inlineNodes(cell.children);
+          return rowIndex === 0 ? `*${value}*` : value;
+        })
+        .join(" | ")
+    )
+    .join("\n");
+}
+
+function astToZoomMarkdown(ast: Root): string {
+  return blockNodes(ast.children).trim();
+}
+
+// ---------------------------------------------------------------------------
+// Structured mode: AST -> text segments with per-segment style
+// ---------------------------------------------------------------------------
+
+function extractText(nodes: readonly ZoomPhrasingContent[]): string {
+  return nodes.map((node) => extractNodeText(node)).join("");
+}
+
+/**
+ * Extract the readable text of one phrasing node. Every branch must keep the
+ * words: a node type that returns "" silently deletes what the user wrote.
+ */
+function extractNodeText(node: ZoomPhrasingContent): string {
+  const { type } = node as { type: string };
+  switch (type) {
+    case "text":
+      return resolveText((node as Text).value);
+    case "strong":
+    case "emphasis":
+    case "delete":
+    case "underline":
+      return extractText(childrenOf(node));
+    case "inlineCode":
+      return codeSpan((node as { value: string }).value);
+    case "html":
+      return resolveText((node as { value: string }).value);
+    case "link": {
+      const link = node as Link;
+      const label = extractText(link.children);
+      return label && label !== link.url ? `${label} (${link.url})` : link.url;
+    }
+    case "image":
+      return (node as Image).alt ?? "";
+    case "break":
+      return "\n";
+    default:
+      return "";
+  }
+}
+
 const isAllBold = (nodes: PhrasingContent[]): boolean =>
   nodes.length > 0 &&
   nodes.every(
-    (n) =>
-      n.type === "strong" ||
-      (n.type === "text" && (n as Text).value.trim() === "")
+    (node) =>
+      node.type === "strong" ||
+      (node.type === "text" && (node as Text).value.trim() === "")
   );
 
 const paragraphSegment = (
@@ -72,7 +294,7 @@ const paragraphSegment = (
 };
 
 const headingSegment = (block: Heading): ZoomContentBodyItem | null => {
-  const text = extractText(block.children as PhrasingContent[]).trim();
+  const text = extractText(block.children).trim();
   if (!text) {
     return null;
   }
@@ -81,51 +303,107 @@ const headingSegment = (block: Heading): ZoomContentBodyItem | null => {
 
 const listSegments = (block: List): ZoomContentBodyItem[] => {
   const segments: ZoomContentBodyItem[] = [];
-  for (const item of block.children as ListItem[]) {
+  block.children.forEach((item, index) => {
+    const marker = block.ordered ? `${(block.start ?? 1) + index}.` : "\u2022";
     for (const child of item.children) {
       if (child.type === "paragraph") {
-        const text = `• ${extractText(child.children).trim()}`;
-        segments.push({ text, type: "message" });
+        const text = extractText(child.children).trim();
+        if (text) {
+          segments.push({ text: `${marker} ${text}`, type: "message" });
+        }
       }
     }
-  }
+  });
   return segments;
 };
 
+const quoteSegments = (block: Blockquote): ZoomContentBodyItem[] => {
+  const text = blockChildrenOf(block)
+    .filter((child): child is Paragraph => child.type === "paragraph")
+    .map((child) => extractText(child.children).trim())
+    .filter((line) => line.length > 0)
+    .map((line) => `> ${line}`)
+    .join("\n");
+  return text ? [{ text, type: "message" }] : [];
+};
+
+const tableSegments = (table: Table): ZoomContentBodyItem[] =>
+  table.children.map((row) => ({
+    text: row.children
+      .map((cell) => extractText(cell.children).trim())
+      .join(" | "),
+    type: "message",
+  }));
+
+/** Structured-mode body items for a single block. */
+function structuredBlockSegments(block: Content): ZoomContentBodyItem[] {
+  const { type } = block as { type: string };
+  if (type === "paragraph") {
+    const segment = paragraphSegment(childrenOf(block));
+    return segment ? [segment] : [];
+  }
+  if (type === "heading") {
+    const segment = headingSegment(block as Heading);
+    return segment ? [segment] : [];
+  }
+  if (type === "list") {
+    return listSegments(block as List);
+  }
+  if (type === "code") {
+    return [
+      {
+        text: `\`\`\`\n${(block as Code).value}\n\`\`\``,
+        type: "message",
+      },
+    ];
+  }
+  if (type === "blockquote") {
+    return quoteSegments(block as Blockquote);
+  }
+  if (type === "table") {
+    return tableSegments(block as Table);
+  }
+  return [];
+}
+
 export class ZoomFormatConverter extends BaseFormatConverter {
+  /**
+   * Pass strings, `raw` and `markdown` through untouched.
+   *
+   * The base implementation re-parses them as STANDARD Markdown first, where
+   * `__text__` means bold. That silently destroyed Zoom's `__underline__`
+   * token (and rewrote single-tilde strikethrough) before `toAst()` saw it.
+   */
   override renderPostable(message: AdapterPostableMessage): string {
-    const text = super.renderPostable(message);
-    return convertEmojiPlaceholders(text, "whatsapp"); // Unicode emoji, same as WhatsApp
+    if (typeof message === "string") {
+      return resolveText(message);
+    }
+    if ("markdown" in message) {
+      return resolveText(message.markdown);
+    }
+    if ("raw" in message) {
+      return resolveText(message.raw);
+    }
+    return resolveText(super.renderPostable(message));
   }
 
   /**
-   * Convert mdast to Zoom content body array with inline styles.
-   * Zoom's /v2/im/chat/messages API supports per-segment bold/italic via style object.
+   * Convert mdast to a Zoom content body array.
+   *
+   * With `markdown: true` this is a single Markdown segment that Zoom parses.
+   * Otherwise it is a list of plain-text segments with per-segment style.
    */
-  toZoomContentBody(ast: Root): ZoomContentBodyItem[] {
-    const segments: ZoomContentBodyItem[] = [];
-
-    for (const block of ast.children) {
-      if (block.type === "paragraph") {
-        const segment = paragraphSegment(block.children);
-        if (segment) {
-          segments.push(segment);
-        }
-      } else if (block.type === "heading") {
-        const segment = headingSegment(block as Heading);
-        if (segment) {
-          segments.push(segment);
-        }
-      } else if (block.type === "list") {
-        segments.push(...listSegments(block));
-      } else if (block.type === "code") {
-        segments.push({
-          text: `\`\`\`\n${block.value}\n\`\`\``,
-          type: "message",
-        });
-      }
+  toZoomContentBody(
+    ast: Root,
+    options: ZoomContentBodyOptions = {}
+  ): ZoomContentBodyItem[] {
+    if (options.markdown) {
+      return [{ text: astToZoomMarkdown(ast), type: "message" }];
     }
 
+    const segments = ast.children.flatMap((block) =>
+      structuredBlockSegments(block)
+    );
     return segments.length > 0 ? segments : [{ text: "", type: "message" }];
   }
 
@@ -159,71 +437,55 @@ export class ZoomFormatConverter extends BaseFormatConverter {
     });
   }
 
-  /**
-   * Convert mdast to Zoom markdown.
-   *
-   * Handles:
-   * - Custom underline node → __text__
-   * - delete node → ~strikethrough~ (post-process ~~...~~ → ~...~)
-   * - Headings, lists: use stringifyMarkdown with * bullets
-   */
+  /** Convert mdast to the Zoom Markdown dialect used on the wire. */
   fromAst(ast: Root): string {
-    const transformed = walkAst(
-      structuredClone(ast) as Root,
-      (node: Content) => {
-        const nodeType = (node as unknown as { type: string }).type;
-        if (nodeType === "underline") {
-          const ul = node as unknown as UnderlineNode;
-          // Render children as plain text content, wrap in __...__
-          // Use an html inline node so stringifyMarkdown passes through the raw
-          // __text__ token without escaping the underscores.
-          const childText = ul.children
-            .map((c) =>
-              c.type === "text"
-                ? (c as { type: "text"; value: string }).value
-                : ""
-            )
-            .join("");
-          return {
-            type: "html",
-            value: `__${childText}__`,
-          } as Content;
-        }
-        return node;
-      }
-    );
+    return astToZoomMarkdown(ast);
+  }
 
-    const markdown = stringifyMarkdown(transformed as Root, {
-      bullet: "*", // Zoom uses * for list bullets
-      emphasis: "_",
-    }).trim();
-
-    return this.toZoomMarkdown(markdown);
+  /**
+   * Convert a postable message to mdast.
+   *
+   * `{ ast }` messages are used as-is. Running them through `renderPostable`
+   * would serialize them with the ZOOM dialect and then re-parse that text as
+   * Zoom Markdown — a lossy round-trip that turns bold (`*x*`) into italic,
+   * because single asterisks also mean emphasis in standard Markdown.
+   */
+  toAstFromPostable(message: AdapterPostableMessage): Root {
+    if (typeof message !== "string" && "ast" in message) {
+      return message.ast;
+    }
+    return this.toAst(this.renderPostable(message));
   }
 
   /**
    * Pre-process Zoom markdown to standard markdown for parseMarkdown().
-   * CRITICAL: Handle __underline__ BEFORE standard markdown processing.
-   * Double underscore is a superset of single underscore at regex level.
+   *
+   * CRITICAL: handle __underline__ BEFORE standard markdown processing, since
+   * double underscore is a superset of single underscore at regex level.
+   *
+   * Code spans and fences are swapped for placeholders first so the regexes
+   * cannot rewrite user code that merely looks like Zoom syntax.
    */
   private toStandardMarkdown(text: string): string {
-    // 1. Handle __underline__ first (double underscore before italic processing)
-    //    Replace __text__ with a link sentinel that parseMarkdown will handle correctly.
-    //    Using a link node [text](zoom-ul:) as the sentinel — recognized in AST post-processing.
-    let result = text.replace(/__([^\n_]+?)__/g, "[$1](zoom-ul:)");
+    const protectedRuns: string[] = [];
+    const protect = (match: string): string => {
+      protectedRuns.push(match);
+      return `${PROTECT_START}${protectedRuns.length - 1}${PROTECT_END}`;
+    };
 
-    // 2. Convert ~strikethrough~ to ~~strikethrough~~ (single → double tilde)
-    //    Regex: single ~ not preceded or followed by ~, no newlines inside
+    let result = text
+      .replace(/```[\s\S]*?```/g, protect)
+      .replace(/`[^`\n]*`/g, protect);
+
+    // 1. __text__ -> link sentinel parsed back into an underline node.
+    result = result.replace(/__([^\n_]+?)__/g, "[$1](zoom-ul:)");
+
+    // 2. ~text~ -> ~~text~~ (single → double tilde).
     result = result.replace(/(?<!~)~(?!~)([^\n~]+?)(?<!~)~(?!~)/g, "~~$1~~");
 
-    return result;
-  }
-
-  /**
-   * Post-process standard markdown output to Zoom markdown tokens.
-   * stringifyMarkdown outputs ~~strikethrough~~ — convert to ~strikethrough~.
-   */
-  private toZoomMarkdown(text: string): string {
-    return text.replace(/~~(.+?)~~/g, "~$1~");
+    return result.replace(
+      PROTECT_PATTERN,
+      (_match, index: string) => protectedRuns[Number(index)] ?? ""
+    );
   }
 }
