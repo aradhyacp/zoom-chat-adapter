@@ -46,7 +46,7 @@ Every change must keep the full suite green:
 1. `pnpm check` — must report 0 errors
 2. `pnpm build` — must exit 0
 3. `pnpm typecheck` — must exit 0
-4. `pnpm test` — all 53 tests must pass (36 in `src/index.test.ts`, 17 in `src/markdown.test.ts`)
+4. `pnpm test` — the full Vitest suite must pass
 
 If a test fails, triage and report it — do not patch adapter source just to force it green without understanding the cause.
 

@@ -112,9 +112,9 @@ Without it, `handleWebhook` awaits processing before responding.
 
 ### Configuration
 
-Every option falls back to an environment variable. All of them except `userName` and
-`logger` are **required at runtime** — `createZoomAdapter()` throws a `ValidationError`
-from `@chat-adapter/shared` at construction time if one is missing.
+Every option falls back to an environment variable. All of them except `userName`,
+`markdownSupport`, and `logger` are **required at runtime** — `createZoomAdapter()` throws
+a `ValidationError` from `@chat-adapter/shared` at construction time if one is missing.
 
 | Option | Env var | Required | Notes |
 |---|---|---|---|
@@ -124,6 +124,7 @@ from `@chat-adapter/shared` at construction time if one is missing.
 | `robotJid` | `ZOOM_ROBOT_JID` | Yes | Bot JID from Team Chat Subscription |
 | `webhookSecretToken` | `ZOOM_WEBHOOK_SECRET_TOKEN` | Yes | Used for HMAC signature + CRC |
 | `userName` | `ZOOM_BOT_USERNAME` | No | Defaults to `"zoom-bot"` |
+| `markdownSupport` | `ZOOM_MARKDOWN_SUPPORT` | No | Defaults to `true`. Sends `is_markdown_support: true` and a Markdown body |
 | `logger` | — | No | Defaults to `new ConsoleLogger("info").child("zoom")` |
 
 Explicit config takes precedence over the environment:
@@ -216,11 +217,34 @@ instance is preferable to constructing a new one per request.
 
 ### Formatting
 
-The adapter converts Chat SDK markdown into Zoom's structured `content.body` segments
-automatically. Supported: `**bold**`, `_italic_`, `` `code` ``, `~strikethrough~`,
-`__underline__`, headings (rendered bold), list items (rendered with a `•` bullet), and
-fenced code blocks. Empty messages are skipped rather than sent, because the Zoom API
-rejects them.
+Messages are sent with Zoom's Markdown parser enabled by default (`is_markdown_support:
+true`), because the structured `style` API only supports bold and italic. The converter
+maps the AST to Zoom's dialect:
+
+- `**bold**` → Zoom's `*bold*` (the chatbot parser uses the legacy single-asterisk
+  form; `**…**` renders as plain text despite the docs table). Verified live:
+  `*x*` and `***x***` are bold, `**x**` is plain.
+- `_italic_`, `` `code` ``, `~strikethrough~` — native Zoom tokens
+- `> quote` — block quote
+- links — `label <https://url>` (Zoom documents only the bare `<url>` form)
+- images — `<img:url|alt>`
+- headings — bold line (Zoom has no heading token)
+- lists — real `•` bullets (Zoom has no list token)
+- tables — pipe-separated text rows (Zoom has no table token)
+- `__underline__` — plain text; **Zoom has no underline token**
+
+Code spans and fences are protected from the Zoom-token regexes, so code that merely
+looks like `~strike~` or `__underline__` is left alone. Empty messages are skipped rather
+than sent, because the Zoom API rejects them.
+
+`{ ast }` postables are passed straight to `toZoomContentBody`; they must not go through
+`renderPostable` first. Serializing an AST to the Zoom dialect and re-parsing that string
+would turn bold into italic, because `*x*` is emphasis in standard Markdown. The
+`toAstFromPostable()` helper is the one place that distinction lives.
+
+Setting `markdownSupport: false` (or `ZOOM_MARKDOWN_SUPPORT=false`) falls back to
+structured segments with whole-paragraph bold only; links, strikethrough, quotes and images
+keep their text but lose their formatting.
 
 ---
 
@@ -262,6 +286,11 @@ platform behaviour and cannot be fixed in this adapter.
   fails. Affected users should contact Zoom Support citing ZOOM-506645.
 - **Streaming is buffered,** not incremental — output accumulates and is sent as one
   message.
+- **Images render only from Zoom-trusted domains.** The Zoom client drops images from
+  other hosts (Unsplash included) with a `[Security] Blocked image from untrusted domain`
+  console warning. The adapter sends the documented `<img:url|alt>` token correctly; the
+  host must be on the app's trusted-domain list (or one Zoom already trusts, such as
+  `developers.zoom.us`).
 - **No reactions, no message history, no typing indicator.**
 
 ---
@@ -274,7 +303,7 @@ Only relevant when editing the adapter's own source.
 
 ```
 src/index.ts      ZoomAdapter class + createZoomAdapter factory
-src/markdown.ts   ZoomFormatConverter — markdown ⇄ Zoom content body
+src/markdown.ts   ZoomFormatConverter — Chat SDK markdown ⇄ Zoom Markdown / segments
 src/types.ts      Config and webhook payload types
 src/*.test.ts     Vitest suites, colocated with source
 ```
