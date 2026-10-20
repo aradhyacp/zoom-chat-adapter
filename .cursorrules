@@ -25,3 +25,22 @@ Introduce secure third-party authentication to replace the legacy email/password
   - Implemented secure token rotation mechanism
 - Created dedicated frontend login button component
 - Updated user database schema to store provider-specific IDs
+
+### Changeset Message Rules
+
+When writing a changeset message for `.changeset/*.md`, always adhere to the following structure:
+
+1. **Header Message:**
+   - Write a single short summary line describing the user-facing change.
+   - Use present tense and keep it on one line, followed by a blank line.
+2. **Sub-list:** 
+   - Add a maximum of **3** bullet points under the header explaining the specific changes.
+   - Do not exceed 3 points; merge or drop the least important ones instead.
+   - Keep bullets user-facing and free of internal implementation detail.
+
+### Changeset Message Blueprint Example:
+Added support for threaded replies in channel threads.
+
+- Replies can now be posted with `metadata.replyTo`
+- Replies stay attached to the parent message
+- DM threads remain unsupported by the Zoom platform
