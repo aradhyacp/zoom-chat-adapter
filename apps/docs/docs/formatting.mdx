@@ -1,61 +1,104 @@
 ---
 title: Formatting
-description: How markdown in your reply becomes Zoom content segments — including what Zoom cannot carry and what is dropped on the way.
+description: How your markdown reaches Zoom — the tokens that render, the ones Zoom cannot carry, and the structured fallback.
 ---
 
-Zoom Team Chat does not take markdown. A message is a list of segments, each one
-a string with an optional bold or italic style, so the adapter converts your
-reply into that shape before sending it.
+Zoom Team Chat accepts two kinds of message body: structured segments (plain text
+plus a per-segment bold or italic flag), and **Markdown**, which you turn on per
+message with `is_markdown_support: true`.
 
-Most of what you write survives. Some of it does not, and the table below is the
-honest version.
+The adapter uses Markdown by default, because it is the only mode that can render
+links, strikethrough, block quotes, and images. Markdown mode also makes Zoom
+ignore the structured `style` field, so everything you want to see has to live in
+the text itself.
 
 <FormatPreview />
 
 ## What reaches Zoom
 
-| What you write | What Zoom receives |
+| What you write | What the adapter sends | What Zoom renders |
+| --- | --- | --- |
+| `**bold**` | `*bold*` | **Bold** |
+| `_italic_` | `_italic_` | *Italic* |
+| `` `code` `` | `` `code` `` | Monospace |
+| `~strikethrough~` | `~strikethrough~` | ~~Strikethrough~~ |
+| `> quote` | `> quote` | Indented, italic (Zoom's quote style) |
+| `[label](https://example.com)` | `label <https://example.com>` | Label plus a clickable URL |
+| `![alt](https://example.com/a.png)` | `<img:https://example.com/a.png\|alt>` | The image, if its host is trusted |
+| `# Heading` | `*Heading*` | A bold line — Zoom has no heading token |
+| `- item` or `* item` | `• item` | A bullet line |
+| `__underline__` | `underline` | Plain text — **Zoom has no underline token** |
+| A table | Pipe-separated rows, bold header | Plain text rows — **Zoom has no table token** |
+
+Code spans and fenced blocks are protected while the rest is converted, so code
+that merely looks like `~strike~` or `__underline__` is left exactly as written.
+An empty message is never sent, because the Zoom API rejects empty content.
+
+## Bold is a single asterisk
+
+This is the one place where Zoom's documentation contradicts itself. Its chatbot
+Markdown page shows `**bold**` in the syntax table but `*bold*` in the request
+example. The live client follows the example:
+
+| Token | Result |
 | --- | --- |
-| A paragraph | One segment of plain text |
-| A paragraph that is bold end to end | One segment with `style.bold` |
-| `**bold**` inside a sentence | The words, with the markers removed and no bold |
-| `_italic_` | The words, with the markers removed and no italics |
-| `` `code` `` | Kept as written, backticks and all |
-| `# Heading` | A bold segment |
-| `* item` | A segment starting with `•` |
-| A fenced code block | One segment, fences included |
-| `~strikethrough~` | **Dropped** — the text does not arrive |
-| `__underline__` | **Dropped** — the text does not arrive |
-| `[label](https://…)` | **Dropped** — neither label nor URL arrives |
-| `:tada:` and other shortcodes | The Unicode emoji |
-| An empty message | Nothing is sent; the Zoom API rejects empty messages |
+| `*bold*` | **bold** |
+| `***bold***` | **bold** |
+| `_italic_` | *italic* |
+| `~strike~` | ~~strike~~ |
+| `**bold**` | plain text |
+| `__underline__` | plain text |
 
-:::warning
-Strikethrough, underline, and link text disappear from an outgoing message. Write
-a URL as bare text (`https://zoom.us/…`) rather than as a markdown link, and say
-"removed" in words rather than striking it through.
-:::
+So `**bold**` in your Chat SDK markdown arrives at Zoom as `*bold*`. If you write
+the Zoom token directly, remember that `*text*` means emphasis in standard
+Markdown, so the adapter will read it as italic. Write standard Markdown and let
+the converter translate.
 
-Inline bold and italics are read and then flattened: `**Deploy** finished` arrives
-as `Deploy finished` with no emphasis. To get a bold line in Zoom, make the whole
-paragraph bold:
+## Links
 
-```ts
-await thread.post("**Deploy finished**\n\nShipped api-gateway in 94s.");
+A markdown link keeps its label and makes the URL clickable:
+
+```md
+See [the docs](https://example.com) for more
 ```
 
-That sends two segments — a bold one and a plain one.
+arrives as `See the docs <https://example.com> for more`. Zoom documents the bare
+`<url>` form; the labelled form also works in current clients.
+
+## Images need a trusted host
+
+The image token is sent correctly, but the Zoom client only renders images from
+domains it trusts. Images from other hosts are dropped client-side, with a
+`[Security] Blocked image from untrusted domain` warning in the browser console.
+Add the host to your app's trusted-domain list, or use one Zoom already trusts,
+such as `developers.zoom.us`.
+
+This is a Zoom client rule. The adapter cannot override it.
+
+## Structured fallback
+
+Set `markdownSupport: false` (or `ZOOM_MARKDOWN_SUPPORT=false`) to send structured
+segments instead:
+
+```ts
+createZoomAdapter({ markdownSupport: false });
+```
+
+That mode bolds a paragraph only when the whole paragraph is bold, including a
+whole bold heading. Inline bold and italic are flattened, and links,
+strikethrough, block quotes, and images keep their text but lose their
+formatting. See [Configuration](./configuration) for the option and its
+environment variable.
 
 ## Reading an incoming message
 
-The other direction is lossless. Incoming text is parsed with Zoom's own
-conventions, which differ from standard markdown in two places:
+Incoming text is parsed with Zoom's own conventions:
 
 | Token | Meaning |
 | --- | --- |
 | `__text__` | Underline, not bold |
-| `~text~` | Strikethrough, with a single tilde |
+| `~text~` | Strikethrough with a single tilde |
 
 Everything else — `**bold**`, `_italic_`, `` `code` ``, `#` headings, `*` lists —
-is standard. `message.text` holds the raw text the user typed, and
+is standard. `message.text` holds the raw text the person typed, and
 `message.formatted` holds the parsed tree.

@@ -32,6 +32,7 @@ createZoomAdapter({
 | `robotJid` | `ZOOM_ROBOT_JID` | Yes | The Bot JID from Team Chat Subscription |
 | `webhookSecretToken` | `ZOOM_WEBHOOK_SECRET_TOKEN` | Yes | Signs webhooks and the setup challenge |
 | `userName` | `ZOOM_BOT_USERNAME` | No | Defaults to `zoom-bot` |
+| `markdownSupport` | `ZOOM_MARKDOWN_SUPPORT` | No | Defaults to `true`. Sends `is_markdown_support: true` and a Zoom Markdown body; `false` falls back to structured segments |
 | `logger` | — | No | Defaults to a console logger at `info`, tagged `zoom` |
 
 A missing credential throws a `ValidationError` the moment the adapter is
@@ -40,6 +41,22 @@ early, not a runtime bug — the app will not start until it is fixed.
 
 [Marketplace setup](./marketplace-setup) shows where each value lives in the
 Zoom dashboard.
+
+## Formatting mode
+
+`markdownSupport` defaults to `true`, which sends `is_markdown_support: true` with
+a Zoom Markdown body. That is the only mode that renders links, strikethrough,
+block quotes, and images. In this mode Zoom ignores the structured `style` field,
+so all emphasis has to live in the text.
+
+Set it to `false` to send structured plain-text segments instead. That mode bolds
+a paragraph only when the whole paragraph is bold, and flattens inline bold and
+italic; links, strikethrough, quotes, and images keep their text but lose their
+formatting. [Formatting](./formatting) has the token-by-token comparison.
+
+```ts
+createZoomAdapter({ markdownSupport: false });
+```
 
 ## Logging
 

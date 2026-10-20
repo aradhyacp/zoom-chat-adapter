@@ -55,13 +55,16 @@ the setup challenge, verifies the signature, and dispatches the event. With
 
 Sends a message to the thread's channel or DM and resolves to
 `{ id, raw, threadId }`, where `id` is Zoom's message ID. Accepts the standard
-postable message, plus `metadata.replyTo` to reply under a parent message. An
-empty message is not sent.
+postable message, plus `metadata.replyTo` to reply under a parent message.
+Markdown is converted to Zoom's dialect and sent with `is_markdown_support: true`
+unless `markdownSupport` is `false`; `{ ast }` messages are used directly rather
+than serialized and re-parsed. An empty message is not sent.
 
 ### editMessage(threadId, messageId, message)
 
-Replaces the content of a message the bot sent. Zoom answers `204 No Content`,
-so the result carries the `messageId` you passed and an empty body.
+Replaces the content of a message the bot sent, using the same conversion as
+`postMessage`. Zoom answers `204 No Content`, so the result carries the
+`messageId` you passed and an empty body.
 
 ### deleteMessage(threadId, messageId)
 
@@ -88,8 +91,10 @@ post a new message to.
 
 ### renderFormatted(content)
 
-Renders a Chat formatted-content tree back to Zoom's markdown conventions:
-`__underline__` and single-tilde `~strikethrough~`, with `*` list bullets.
+Renders a Chat formatted-content tree to the Zoom Markdown dialect used on the
+wire: `*bold*` (single asterisk — `**bold**` renders as plain text), `_italic_`,
+`~strikethrough~`, `label <https://url>`, `<img:url|alt>`, and `•` bullets.
+Underline becomes plain text because Zoom has no underline token.
 
 ### getAccessToken()
 
