@@ -57,7 +57,7 @@
     "fix": "ultracite fix",
     "prepare": "husky",
     "prepublishOnly": "pnpm build",
-    "release": "pnpm build && npm publish && changeset tag",
+    "release": "pnpm build && changeset publish",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

@@ -39,6 +39,11 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # Pin npm 11.x: trusted publishing needs >= 11.5.1, and npm 12 changed the
+      # `npm info --json` shape that changesets reads to detect published versions.
+      - name: Update npm
+        run: npm install -g npm@11
+
       - name: Print toolchain versions
         run: |
           node --version
@@ -68,3 +73,5 @@ jobs:
           commitMode: github-api
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Workaround for https://github.com/changesets/action/pull/545
+          NPM_TOKEN: ""
