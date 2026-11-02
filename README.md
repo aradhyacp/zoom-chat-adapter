@@ -249,10 +249,13 @@ zoom:{channelId}:{messageId}
 
 - Channel message: `zoom:abc123@conference.xmpp.zoom.us:msg-id-456`
 - DM: `zoom:{userJid}:{event_ts}` (sender-based channel with the event timestamp as message ID)
+- Threaded `team_chat.app_mention`: `zoom:{channelJid}:{reply_main_message_id}`. The event
+  sends a bare `channel_id`, so the adapter appends `@conference.xmpp.zoom.us` before
+  building the ID.
 
 ## Known limitations
 
-**Thread subscription (subscribe flow):** The `thread.subscribe()` pattern does not work for Zoom. Each `bot_notification` arrives with a unique thread ID based on `event_ts` — Zoom provides no `reply_to` or `parent_message_id` field to link replies to the original message. This is a confirmed Zoom platform limitation. Subsequent replies in a thread cannot be detected as part of the same conversation.
+**Thread subscription (subscribe flow):** The `thread.subscribe()` pattern does not work for `bot_notification`. Each `bot_notification` arrives with a unique thread ID based on `event_ts` — the payload has no parent message ID to link replies to the original message. This is a confirmed Zoom platform limitation. `team_chat.app_mention` is the exception: it carries `reply_main_message_id`, which the adapter uses to keep threaded mentions in the same conversation.
 
 **DM thread replies:** Zoom does not fire `chat_message.replied` for 1:1 DM thread replies. The adapter cannot subscribe to or receive threaded replies in DMs.
 

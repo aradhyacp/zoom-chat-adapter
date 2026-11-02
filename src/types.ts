@@ -78,10 +78,11 @@ export interface ZoomAppMentionPayload {
     object: {
       message_id: string; // UUID
       type: "to_channel";
-      channel_id: string;
+      channel_id: string; // bare channel ID — convert to a JID before sending
       channel_name: string;
       message: string; // user's plain text
       rich_text?: unknown[];
+      /** Present when the mention is a reply inside a thread; the root message ID. */
       reply_main_message_id?: string;
       date_time: string;
       timestamp: number;
@@ -105,7 +106,8 @@ export interface UnderlineNode {
 }
 
 /** Zoom-specific postable message extension for threaded replies (MSG-02).
- * Pass a message matching this shape to postMessage() to set reply_main_message_id.
+ * Pass a message matching this shape to postMessage() to set the outbound
+ * `reply_to` field. The inbound webhook field is `reply_main_message_id`.
  * The postMessage() signature remains AdapterPostableMessage (Adapter interface contract);
  * the cast to ZoomMessageWithReply happens inside the function body.
  */

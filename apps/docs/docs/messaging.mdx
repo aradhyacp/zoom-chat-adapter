@@ -44,7 +44,11 @@ await adapter.postMessage(threadId, {
 });
 ```
 
-`metadata.replyTo` becomes `reply_main_message_id` on the Zoom call.
+`metadata.replyTo` becomes `reply_to` on the Zoom call.
+
+When someone @-mentions the bot inside an existing thread, you do not need to set
+`replyTo`: the adapter keys the thread on `reply_main_message_id` and sets
+`reply_to` automatically, so the answer lands in the same thread.
 
 :::warning
 A reply posted into a one-to-one DM thread will send, but Zoom never delivers a
