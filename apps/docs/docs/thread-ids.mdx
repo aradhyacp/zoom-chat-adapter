@@ -11,7 +11,10 @@ zoom:{channelId}:{messageId}
 ```
 
 `channelId` is a Zoom JID. `messageId` is the event timestamp for a
-`bot_notification`, or the message UUID for a `team_chat.app_mention`.
+`bot_notification`, the mention's message UUID for a top-level
+`team_chat.app_mention`, or `reply_main_message_id` when the mention is inside a
+thread. `team_chat.app_mention` sends a bare channel ID, so the adapter appends
+`@conference.xmpp.zoom.us` before building the thread ID.
 
 <ThreadIdPlayground />
 
@@ -41,7 +44,9 @@ second colon to split on, so it decodes to an empty channel ID and an empty
 message ID. The Zoom API call made with it is what will fail.
 
 :::note
-A thread ID is not a conversation. Zoom gives every incoming bot message a fresh
-`event_ts`, so two messages a person sees as one exchange produce two unrelated
-thread IDs. See [Limitations](./limitations).
+A thread ID is not a conversation for `bot_notification`. Zoom gives every incoming
+bot message a fresh `event_ts`, so two messages a person sees as one exchange produce
+two unrelated thread IDs. Threaded `team_chat.app_mention` events are the exception:
+they carry `reply_main_message_id`, which the adapter uses as the thread key. See
+[Limitations](./limitations).
 :::

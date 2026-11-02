@@ -187,7 +187,9 @@ await adapter.postMessage(threadId, {
 });
 ```
 
-`metadata.replyTo` becomes `reply_main_message_id` on the Zoom API call. Note the caveat
+`metadata.replyTo` becomes `reply_to` on the Zoom API call. When an @-mention arrives
+inside an existing thread, the adapter keys the thread on `reply_main_message_id` and
+automatically sets `reply_to`, so the bot's answer stays in that thread. Note the caveat
 under Limitations: replies posted into a **DM** thread will send, but Zoom will never
 deliver a webhook for replies the user makes back in that thread.
 
@@ -202,6 +204,10 @@ only DM-detection mechanism the adapter has:
 
 - `…@conference.xmpp.zoom.us` → **channel**
 - anything else (a user JID) → **DM**
+
+`team_chat.app_mention` sends a bare channel ID, so the adapter appends
+`@conference.xmpp.zoom.us` before building the thread ID. Thread IDs created by
+`bot_notification` already carry the full JID.
 
 `messageId` is the `event_ts` for `bot_notification`, or the message UUID for
 `team_chat.app_mention`. `decodeThreadId` tolerates a channel-level ID with no
@@ -273,10 +279,12 @@ elsewhere.
 State these plainly rather than attempting workarounds — the first two are confirmed Zoom
 platform behaviour and cannot be fixed in this adapter.
 
-- **Thread subscription does not work.** Every `bot_notification` arrives with a thread ID
-  derived from a unique `event_ts`, and Zoom supplies no `reply_to` / `parent_message_id`
-  to correlate replies with the original message. Consecutive messages in what the user
-  sees as one conversation cannot be linked.
+- **Thread subscription does not work for `bot_notification`.** Every `bot_notification`
+  arrives with a thread ID derived from a unique `event_ts`, and the payload carries no
+  parent message ID to correlate replies with the original message. Consecutive
+  `bot_notification` messages in what the user sees as one conversation cannot be linked.
+  `team_chat.app_mention` is the exception: it carries `reply_main_message_id`, which the
+  adapter uses to keep threaded mentions in one conversation.
 - **DM thread replies are never delivered.** Zoom does not fire `chat_message.replied` for
   1:1 DM thread replies.
   ([devforum thread](https://devforum.zoom.us/t/clarification-on-zoom-chatbot-webhook-events-for-thread-replies-in-1-1-chats/134812))

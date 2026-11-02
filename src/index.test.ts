@@ -346,14 +346,18 @@ describe("ZoomAdapter — bot_notification (WBHK-04)", () => {
 describe("ZoomAdapter — team_chat.app_mention (WBHK-05)", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("WBHK-05: produces correct threadId (channel_id:message_id), text, author", async () => {
-    const adapter = createZoomAdapter(TEST_CREDENTIALS);
-    const chat = makeMockChat();
-    await adapter.initialize(chat);
+  const CONFERENCE_SUFFIX = "@conference.xmpp.zoom.us";
 
-    const messageId = "5DD614F4-DD19-ABCD-EF12-000000000001";
-    const channelId = "channel-id-123";
-    const body = JSON.stringify({
+  function makeMentionBody({
+    channelId,
+    messageId,
+    replyMainId,
+  }: {
+    channelId: string;
+    messageId: string;
+    replyMainId?: string;
+  }): string {
+    return JSON.stringify({
       event: "team_chat.app_mention",
       event_ts: 1_712_600_002_000,
       payload: {
@@ -363,8 +367,9 @@ describe("ZoomAdapter — team_chat.app_mention (WBHK-05)", () => {
           channel_id: channelId,
           channel_name: "general",
           date_time: "2024-04-08T12:00:00Z",
-          message: "@bot please help",
+          message: replyMainId ? "@bot threaded reply" : "@bot please help",
           message_id: messageId,
+          ...(replyMainId ? { reply_main_message_id: replyMainId } : {}),
           timestamp: 1_712_577_600_000,
           type: "to_channel",
         },
@@ -373,16 +378,96 @@ describe("ZoomAdapter — team_chat.app_mention (WBHK-05)", () => {
         operator_member_id: "member-id-3",
       },
     });
-    const request = makeZoomRequest(body);
+  }
+
+  function mockPostFetch(): ReturnType<typeof vi.fn> {
+    return vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ message_id: "bot-reply-uuid" }),
+      ok: true,
+      status: 200,
+      text: () =>
+        Promise.resolve(JSON.stringify({ message_id: "bot-reply-uuid" })),
+    });
+  }
+
+  it("WBHK-05: top-level mention uses the channel JID and the mention message ID", async () => {
+    const adapter = createZoomAdapter(TEST_CREDENTIALS);
+    const chat = makeMockChat();
+    await adapter.initialize(chat);
+
+    const messageId = "5DD614F4-DD19-ABCD-EF12-000000000001";
+    const channelId = "channel-id-123";
+    const channelJid = `${channelId}${CONFERENCE_SUFFIX}`;
+    const request = makeZoomRequest(makeMentionBody({ channelId, messageId }));
     await adapter.handleWebhook(request);
 
     expect(chat.processMessage).toHaveBeenCalledOnce();
     const [, threadId, message] = (
       chat.processMessage as ReturnType<typeof vi.fn>
     ).mock.calls[0];
-    expect(threadId).toBe(`zoom:${channelId}:${messageId}`);
+    expect(threadId).toBe(`zoom:${channelJid}:${messageId}`);
     expect(message.text).toBe("@bot please help");
     expect(message.author.userId).toBe("user-id-3");
+  });
+
+  it("WBHK-05-b: threaded mention keys the thread on reply_main_message_id and replies with reply_to", async () => {
+    const adapter = createZoomAdapter(TEST_CREDENTIALS);
+    const chat = makeMockChat();
+    await adapter.initialize(chat);
+
+    const messageId = "reply-uuid-1111";
+    const parentId = "parent-uuid-0000";
+    const channelId = "channel-id-456";
+    const channelJid = `${channelId}${CONFERENCE_SUFFIX}`;
+    const request = makeZoomRequest(
+      makeMentionBody({ channelId, messageId, replyMainId: parentId })
+    );
+    await adapter.handleWebhook(request);
+
+    expect(chat.processMessage).toHaveBeenCalledOnce();
+    const [, threadId, message] = (
+      chat.processMessage as ReturnType<typeof vi.fn>
+    ).mock.calls[0];
+    expect(threadId).toBe(`zoom:${channelJid}:${parentId}`);
+    expect(message.id).toBe(messageId);
+    expect(message.raw.payload.object.reply_main_message_id).toBe(parentId);
+
+    const fetchMock = mockPostFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(adapter, "getAccessToken").mockResolvedValue("test-token");
+
+    await adapter.postMessage(threadId, "Bot thread answer");
+    const callBody = JSON.parse(
+      (fetchMock.mock.calls[0][1] as { body: string }).body
+    ) as Record<string, unknown>;
+    expect(callBody.reply_to).toBe(parentId);
+    expect(callBody.to_jid).toBe(channelJid);
+    expect(callBody).not.toHaveProperty("reply_main_message_id");
+  });
+
+  it("WBHK-05-c: top-level mention does not auto-thread the bot's reply", async () => {
+    const adapter = createZoomAdapter(TEST_CREDENTIALS);
+    const chat = makeMockChat();
+    await adapter.initialize(chat);
+
+    const messageId = "mention-uuid-2222";
+    const channelId = "channel-id-789";
+    const channelJid = `${channelId}${CONFERENCE_SUFFIX}`;
+    const request = makeZoomRequest(makeMentionBody({ channelId, messageId }));
+    await adapter.handleWebhook(request);
+
+    const [, threadId] = (chat.processMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0];
+    const fetchMock = mockPostFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(adapter, "getAccessToken").mockResolvedValue("test-token");
+
+    await adapter.postMessage(threadId, "Bot channel answer");
+    const callBody = JSON.parse(
+      (fetchMock.mock.calls[0][1] as { body: string }).body
+    ) as Record<string, unknown>;
+    expect(callBody).not.toHaveProperty("reply_to");
+    expect(callBody.to_jid).toBe(channelJid);
   });
 });
 
@@ -431,7 +516,7 @@ describe("ZoomAdapter — postMessage (MSG-01, MSG-02)", () => {
     expect(callBody).toHaveProperty("content.body");
   });
 
-  it("MSG-01-b: postMessage to DM JID calls POST with correct body (no reply_main_message_id)", async () => {
+  it("MSG-01-b: postMessage to DM JID calls POST with correct body and no reply field", async () => {
     const fetchMock = mockFetch(200, { message_id: "msg-uuid-123" });
     vi.stubGlobal("fetch", fetchMock);
     const adapter = createZoomAdapter(TEST_CREDENTIALS);
@@ -449,6 +534,7 @@ describe("ZoomAdapter — postMessage (MSG-01, MSG-02)", () => {
       to_jid: "user@xmpp.zoom.us",
     });
     expect(callBody).not.toHaveProperty("reply_main_message_id");
+    expect(callBody).not.toHaveProperty("reply_to");
   });
 
   it("MSG-01-c: postMessage returns RawMessage with id, threadId, and raw", async () => {
@@ -465,7 +551,7 @@ describe("ZoomAdapter — postMessage (MSG-01, MSG-02)", () => {
     expect(result.raw).toEqual({ message_id: "msg-uuid-123" });
   });
 
-  it("MSG-02-a: postMessage with replyTo includes reply_main_message_id in body", async () => {
+  it("MSG-02-a: postMessage with replyTo includes reply_to in body", async () => {
     const fetchMock = mockFetch(200, { message_id: "msg-uuid-456" });
     vi.stubGlobal("fetch", fetchMock);
     const adapter = createZoomAdapter(TEST_CREDENTIALS);
@@ -485,7 +571,27 @@ describe("ZoomAdapter — postMessage (MSG-01, MSG-02)", () => {
     const callBody = JSON.parse(
       (fetchMock.mock.calls[0][1] as { body: string }).body
     ) as Record<string, unknown>;
-    expect(callBody.reply_main_message_id).toBe("parent-id");
+    expect(callBody.reply_to).toBe("parent-id");
+    expect(callBody).not.toHaveProperty("reply_main_message_id");
+  });
+
+  it("MSG-01-d: postMessage normalizes a bare channel ID to a JID", async () => {
+    const fetchMock = mockFetch(200, { message_id: "msg-uuid-bare" });
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = createZoomAdapter(TEST_CREDENTIALS);
+    vi.spyOn(adapter, "getAccessToken").mockResolvedValue("test-token");
+
+    const threadId = "zoom:bare-channel-id:msg-006";
+    await adapter.postMessage(threadId, "Hello bare channel");
+
+    const callBody = JSON.parse(
+      (fetchMock.mock.calls[0][1] as { body: string }).body
+    ) as Record<string, unknown>;
+    expect(callBody.to_jid).toBe("bare-channel-id@conference.xmpp.zoom.us");
+    expect(adapter.isDM(threadId)).toBe(false);
+    expect(adapter.channelIdFromThreadId(threadId)).toBe(
+      "zoom:bare-channel-id@conference.xmpp.zoom.us"
+    );
   });
 
   it("MSG-02-b: postMessage with replyTo to a DM logs debug warning about THRD-03", async () => {
