@@ -1,5 +1,11 @@
 # zoom-chat-adapter
 
+## 1.1.1
+
+### Patch Changes
+
+- [#43](https://github.com/aradhyacp/zoom-chat-adapter/pull/43) [`05041a7`](https://github.com/aradhyacp/zoom-chat-adapter/commit/05041a7e726ba55da167af4d11fbb258e89ecd39) Thanks [@aradhyacp](https://github.com/aradhyacp)! - Fix threaded @-mentions: the bot now answers inside the existing Zoom thread. The adapter keys `team_chat.app_mention` threads on `reply_main_message_id`, sends replies with `reply_to` instead of `reply_main_message_id`, and converts bare app-mention channel IDs to channel JIDs before sending.
+
 ## 1.1.0
 
 ### Minor Changes
