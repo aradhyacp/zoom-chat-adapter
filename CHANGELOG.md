@@ -1,5 +1,17 @@
 # zoom-chat-adapter
 
+## 1.2.0
+
+### Minor Changes
+
+- [#47](https://github.com/aradhyacp/zoom-chat-adapter/pull/47) [`6bf7f07`](https://github.com/aradhyacp/zoom-chat-adapter/commit/6bf7f076da404f5195918b3d69319749f10a6dfa) Thanks [@aradhyacp](https://github.com/aradhyacp)! - Add native Zoom message head support. `thread.post` text is now sent as `content.head`, and Chat SDK `Card`s are split into head (`title`/`subtitle`) and body (`children`). Closes [#46](https://github.com/aradhyacp/zoom-chat-adapter/issues/46).
+
+### Patch Changes
+
+- [#45](https://github.com/aradhyacp/zoom-chat-adapter/pull/45) [`fef149b`](https://github.com/aradhyacp/zoom-chat-adapter/commit/fef149bcd34a531d10400f22fe127838b218eb91) Thanks [@jdotc1](https://github.com/jdotc1)! - Reject malformed and future-dated Zoom webhook timestamps outside the five-minute signature verification window.
+
+- [#43](https://github.com/aradhyacp/zoom-chat-adapter/pull/43) [`05041a7`](https://github.com/aradhyacp/zoom-chat-adapter/commit/05041a7e726ba55da167af4d11fbb258e89ecd39) Thanks [@aradhyacp](https://github.com/aradhyacp)! - Fix threaded @-mentions: the bot now answers inside the existing Zoom thread. The adapter keys `team_chat.app_mention` threads on `reply_main_message_id`, sends replies with `reply_to` instead of `reply_main_message_id`, and converts bare app-mention channel IDs to channel JIDs before sending.
+
 ## 1.1.0
 
 ### Minor Changes
