@@ -981,4 +981,18 @@ describe("ZoomAdapter — head/body content (issue #46)", () => {
       body: [{ text: "just sub\n\nbody", type: "message" }],
     });
   });
+
+  it("sends a message with a fenced code block as body, not head", async () => {
+    const content = await post({
+      markdown: "Run this:\n\n```js\nconsole.log('hi')\n```",
+    });
+    expect(content).not.toHaveProperty("head");
+    expect(content).toHaveProperty("body");
+  });
+
+  it("keeps inline code in the head", async () => {
+    expect(await post({ markdown: "run `pnpm test` now" })).toEqual({
+      head: { text: "run `pnpm test` now" },
+    });
+  });
 });
