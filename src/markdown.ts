@@ -25,6 +25,7 @@
  *   the data is preserved instead of dropped.
  */
 
+import { cardToFallbackText, extractCard } from "@chat-adapter/shared";
 import type { AdapterPostableMessage } from "chat";
 import {
   BaseFormatConverter,
@@ -32,6 +33,7 @@ import {
   convertEmojiPlaceholders,
   parseMarkdown,
   type Root,
+  toPlainText,
   walkAst,
 } from "chat";
 import type {
@@ -52,6 +54,12 @@ export interface ZoomContentBodyItem {
   style?: { bold?: boolean; italic?: boolean };
   text: string;
   type: "message";
+}
+
+/** The `content` object of a Zoom chatbot message: a head and an optional body. */
+export interface ZoomContent {
+  body?: ZoomContentBodyItem[];
+  head?: { sub_head?: { text: string }; text: string };
 }
 
 /** Options for converting an AST into a Zoom message body. */
@@ -435,6 +443,54 @@ export class ZoomFormatConverter extends BaseFormatConverter {
       }
       return node;
     });
+  }
+
+  /**
+   * Build the Zoom `content` (head + optional body) for a postable message.
+   *
+   * - Plain messages (string, raw, markdown, ast) become the head.
+   * - Cards follow Chat SDK conventions: `title` -> head, `subtitle` ->
+   *   sub_head, `children` -> body.
+   */
+  toZoomContent(
+    message: AdapterPostableMessage,
+    options: ZoomContentBodyOptions = {}
+  ): ZoomContent {
+    const headText = (ast: Root): string =>
+      options.markdown ? astToZoomMarkdown(ast) : toPlainText(ast);
+
+    const card = extractCard(message);
+    if (!card) {
+      return { head: { text: headText(this.toAstFromPostable(message)) } };
+    }
+
+    const bodyText = cardToFallbackText(
+      { ...card, subtitle: undefined, title: undefined },
+      { boldFormat: "**", lineBreak: "\n\n" }
+    );
+
+    // Zoom rejects a head with empty text (HTTP 400), and a sub_head needs a
+    // head. A card without a title therefore sends no head at all; its
+    // subtitle is kept as the first line of the body instead of being lost.
+    const title = card.title?.trim();
+    const bodyParts = [title ? undefined : card.subtitle, bodyText].filter(
+      (part): part is string => Boolean(part?.trim())
+    );
+    const body = bodyParts.length
+      ? this.toZoomContentBody(this.toAst(bodyParts.join("\n\n")), options)
+      : undefined;
+
+    const content: ZoomContent = {};
+    if (title) {
+      content.head = {
+        text: title,
+        ...(card.subtitle ? { sub_head: { text: card.subtitle } } : {}),
+      };
+    }
+    if (body) {
+      content.body = body;
+    }
+    return content;
   }
 
   /** Convert mdast to the Zoom Markdown dialect used on the wire. */

@@ -221,6 +221,13 @@ grant and caches it in memory, refreshing 60 seconds before expiry. A failed tok
 throws an `AuthenticationError`. The cache lives on the adapter instance, so a long-lived
 instance is preferable to constructing a new one per request.
 
+### Head and body
+
+A Zoom message has a **head** and an optional **body**. The adapter fills them like this:
+
+- `thread.post` / `editMessage` with a string, `{ raw }`, `{ markdown }` or `{ ast }` → the text is sent as `content.head.text` (Markdown still applies, since Zoom renders it in the head).
+- `Card(...)` / `{ card }` → `title` → `head.text`, `subtitle` → `head.sub_head.text`, `children` → `body` (rendered via the Chat SDK card fallback text).
+
 ### Formatting
 
 Messages are sent with Zoom's Markdown parser enabled by default (`is_markdown_support:
@@ -299,6 +306,7 @@ platform behaviour and cannot be fixed in this adapter.
   console warning. The adapter sends the documented `<img:url|alt>` token correctly; the
   host must be on the app's trusted-domain list (or one Zoom already trusts, such as
   `developers.zoom.us`).
+- **Fenced code blocks (```` ``` ````) do not render** in a Zoom chatbot message, in either the head or the body (confirmed live, issue #46). Inline `` `code` `` works. Do not route code fences to the body expecting them to render.
 - **No reactions, no message history, no typing indicator.**
 
 ---
