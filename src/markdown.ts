@@ -448,8 +448,7 @@ export class ZoomFormatConverter extends BaseFormatConverter {
   /**
    * Build the Zoom `content` (head + optional body) for a postable message.
    *
-   * - Plain messages (string, raw, markdown, ast) become the head, unless they
-   *   contain a fenced code block, in which case they become the body.
+   * - Plain messages (string, raw, markdown, ast) become the head.
    * - Cards follow Chat SDK conventions: `title` -> head, `subtitle` ->
    *   sub_head, `children` -> body.
    */
@@ -462,13 +461,7 @@ export class ZoomFormatConverter extends BaseFormatConverter {
 
     const card = extractCard(message);
     if (!card) {
-      const ast = this.toAstFromPostable(message);
-      // Zoom does not render fenced code blocks inside a head, so a message
-      // that contains one is sent as a body, where they do render.
-      if (ast.children.some((node) => node.type === "code")) {
-        return { body: this.toZoomContentBody(ast, options) };
-      }
-      return { head: { text: headText(ast) } };
+      return { head: { text: headText(this.toAstFromPostable(message)) } };
     }
 
     const bodyText = cardToFallbackText(
