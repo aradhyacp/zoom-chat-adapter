@@ -1,7 +1,15 @@
 import { createHmac } from "node:crypto";
 import { ValidationError } from "@chat-adapter/shared";
 import type { ChatInstance } from "chat";
-import { Card, CardText, paragraph, root, strong, text } from "chat";
+import {
+  Card,
+  CardText,
+  ConsoleLogger,
+  paragraph,
+  root,
+  strong,
+  text,
+} from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createZoomAdapter, type ZoomAdapter } from "./index.js";
 import type { ZoomMessageWithReply } from "./types.js";
@@ -43,6 +51,11 @@ function makeZoomRequest(
 }
 
 describe("ZoomAdapter — Webhook Verification (WBHK-01, WBHK-02, WBHK-03)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it("WBHK-01: endpoint.url_validation returns { plainToken, encryptedToken } with HTTP 200", async () => {
     const adapter = createZoomAdapter(TEST_CREDENTIALS);
     const plainToken = "abc123";
@@ -106,6 +119,79 @@ describe("ZoomAdapter — Webhook Verification (WBHK-01, WBHK-02, WBHK-03)", () 
     const response = await adapter.handleWebhook(request);
 
     expect(response.status).toBe(401);
+  });
+
+  it.each([
+    ["past 4 minutes", -240, 200],
+    ["past exactly 5 minutes", -300, 200],
+    ["past 6 minutes", -360, 401],
+    ["future 4 minutes", 240, 200],
+    ["future exactly 5 minutes", 300, 200],
+    ["future 6 minutes", 360, 401],
+    ["future 10 minutes", 600, 401],
+  ])(
+    "WBHK-02: a valid signature from %s has the expected status",
+    async (_description, deltaSeconds, expectedStatus) => {
+      const fixedNow = Date.parse("2026-11-09T12:00:00.000Z");
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedNow);
+
+      const adapter = createZoomAdapter(TEST_CREDENTIALS);
+      const body = JSON.stringify({ event: "bot_notification", payload: {} });
+      const timestamp = String(fixedNow / 1000 + deltaSeconds);
+      const response = await adapter.handleWebhook(
+        makeZoomRequest(body, { timestamp })
+      );
+
+      expect(response.status).toBe(expectedStatus);
+    }
+  );
+
+  it.each([
+    "not-a-number",
+    "1.5",
+    "NaN",
+    "Infinity",
+    "1e20",
+    `${Math.floor(Date.now() / 1000)}e0`,
+  ])("WBHK-02: malformed timestamp %s returns HTTP 401", async (timestamp) => {
+    const adapter = createZoomAdapter(TEST_CREDENTIALS);
+    const body = JSON.stringify({ event: "bot_notification", payload: {} });
+    const response = await adapter.handleWebhook(
+      makeZoomRequest(body, { timestamp })
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("WBHK-02: missing timestamp returns HTTP 401", async () => {
+    const adapter = createZoomAdapter(TEST_CREDENTIALS);
+    const body = JSON.stringify({ event: "bot_notification", payload: {} });
+    const request = new Request("https://example.com/webhook", {
+      body,
+      headers: { "x-zm-signature": makeSignature(body, "") },
+      method: "POST",
+    });
+
+    expect((await adapter.handleWebhook(request)).status).toBe(401);
+  });
+
+  it("WBHK-02: an out-of-window timestamp logs its absolute skew", async () => {
+    const logger = new ConsoleLogger("debug");
+    const debug = vi.spyOn(logger, "debug").mockImplementation(() => undefined);
+    const adapter = createZoomAdapter({ ...TEST_CREDENTIALS, logger });
+    const body = JSON.stringify({ event: "bot_notification", payload: {} });
+    const timestamp = String(Math.floor(Date.now() / 1000) + 600);
+
+    const response = await adapter.handleWebhook(
+      makeZoomRequest(body, { timestamp })
+    );
+
+    expect(response.status).toBe(401);
+    expect(debug).toHaveBeenCalledWith(
+      "Zoom webhook timestamp outside allowed window",
+      expect.objectContaining({ skewMs: expect.any(Number) })
+    );
   });
 
   it("WBHK-03: valid signature with correct raw body passes verification", async () => {

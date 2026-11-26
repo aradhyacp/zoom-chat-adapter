@@ -39,6 +39,8 @@ export type {
 } from "./types.js";
 
 const CONFERENCE_JID_SUFFIX = "@conference.xmpp.zoom.us";
+const WEBHOOK_TIMESTAMP_WINDOW_MS = 5 * 60 * 1000;
+const WEBHOOK_TIMESTAMP_PATTERN = /^\d+$/;
 
 /**
  * `team_chat.app_mention` sends a bare channel ID (e.g. "8AmQ0WOo..."), while
@@ -171,9 +173,24 @@ export class ZoomAdapter implements Adapter {
       return false;
     }
 
-    // Reject stale requests — fixed 5-minute window per Zoom spec
-    const fiveMinutesMs = 5 * 60 * 1000;
-    if (Date.now() - Number(timestamp) * 1000 > fiveMinutesMs) {
+    // Reject malformed timestamps and requests outside Zoom's symmetric window.
+    if (!WEBHOOK_TIMESTAMP_PATTERN.test(timestamp)) {
+      return false;
+    }
+
+    const timestampSeconds = Number(timestamp);
+    if (!Number.isSafeInteger(timestampSeconds)) {
+      return false;
+    }
+
+    const skewMs = Math.abs(Date.now() - timestampSeconds * 1000);
+    if (skewMs > WEBHOOK_TIMESTAMP_WINDOW_MS) {
+      this.config.logger.debug(
+        "Zoom webhook timestamp outside allowed window",
+        {
+          skewMs,
+        }
+      );
       return false;
     }
 
