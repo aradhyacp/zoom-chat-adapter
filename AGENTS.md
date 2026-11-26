@@ -221,6 +221,13 @@ grant and caches it in memory, refreshing 60 seconds before expiry. A failed tok
 throws an `AuthenticationError`. The cache lives on the adapter instance, so a long-lived
 instance is preferable to constructing a new one per request.
 
+### Head and body
+
+A Zoom message has a **head** and an optional **body**. The adapter fills them like this:
+
+- `thread.post` / `editMessage` with a string, `{ raw }`, `{ markdown }` or `{ ast }` → the text is sent as `content.head.text` (Markdown still applies, since Zoom renders it in the head).
+- `Card(...)` / `{ card }` → `title` → `head.text`, `subtitle` → `head.sub_head.text`, `children` → `body` (rendered via the Chat SDK card fallback text).
+
 ### Formatting
 
 Messages are sent with Zoom's Markdown parser enabled by default (`is_markdown_support:
