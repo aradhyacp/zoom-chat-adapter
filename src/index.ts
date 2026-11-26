@@ -410,8 +410,7 @@ export class ZoomAdapter implements Adapter {
       return { id: String(Date.now()), raw: {}, threadId };
     }
 
-    const ast = this.formatConverter.toAstFromPostable(message);
-    const contentBody = this.formatConverter.toZoomContentBody(ast, {
+    const content = this.formatConverter.toZoomContent(message, {
       markdown: this.config.markdownSupport,
     });
 
@@ -433,9 +432,7 @@ export class ZoomAdapter implements Adapter {
       robot_jid: this.config.robotJid,
       to_jid: toJid,
       ...(userJid ? { user_jid: userJid } : {}),
-      content: {
-        body: contentBody,
-      },
+      content,
       ...(this.config.markdownSupport ? { is_markdown_support: true } : {}),
       ...(replyTo ? { reply_to: replyTo } : {}),
     };
@@ -461,8 +458,7 @@ export class ZoomAdapter implements Adapter {
     messageId: string,
     message: AdapterPostableMessage
   ): Promise<RawMessage<unknown>> {
-    const ast = this.formatConverter.toAstFromPostable(message);
-    const contentBody = this.formatConverter.toZoomContentBody(ast, {
+    const content = this.formatConverter.toZoomContent(message, {
       markdown: this.config.markdownSupport,
     });
     const editUserJid = this.threadUserJid.get(threadId);
@@ -473,7 +469,7 @@ export class ZoomAdapter implements Adapter {
           account_id: this.config.accountId,
           robot_jid: this.config.robotJid,
           ...(editUserJid ? { user_jid: editUserJid } : {}),
-          content: { body: contentBody },
+          content,
           ...(this.config.markdownSupport ? { is_markdown_support: true } : {}),
         }),
         method: "PUT",

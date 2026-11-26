@@ -1,9 +1,17 @@
 import { createHmac } from "node:crypto";
 import { ValidationError } from "@chat-adapter/shared";
 import type { ChatInstance } from "chat";
-import { ConsoleLogger, paragraph, root, strong, text } from "chat";
+import {
+  Card,
+  CardText,
+  ConsoleLogger,
+  paragraph,
+  root,
+  strong,
+  text,
+} from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createZoomAdapter } from "./index.js";
+import { createZoomAdapter, type ZoomAdapter } from "./index.js";
 import type { ZoomMessageWithReply } from "./types.js";
 
 const TEST_SECRET = "test-webhook-secret";
@@ -591,7 +599,7 @@ describe("ZoomAdapter — postMessage (MSG-01, MSG-02)", () => {
       robot_jid: TEST_CREDENTIALS.robotJid,
       to_jid: "chan@conference.xmpp.zoom.us",
     });
-    expect(callBody).toHaveProperty("content.body");
+    expect(callBody).toHaveProperty("content.head.text");
   });
 
   it("MSG-01-b: postMessage to DM JID calls POST with correct body and no reply field", async () => {
@@ -720,13 +728,11 @@ describe("ZoomAdapter — postMessage (MSG-01, MSG-02)", () => {
     const callBody = JSON.parse(
       (fetchMock.mock.calls[0][1] as { body: string }).body
     ) as {
-      content: { body: { style?: unknown; text: string }[] };
+      content: { head: { text: string } };
       is_markdown_support?: boolean;
     };
     expect(callBody.is_markdown_support).toBe(true);
-    expect(callBody.content.body).toEqual([
-      { text: "This is ~struck~ text", type: "message" },
-    ]);
+    expect(callBody.content.head).toEqual({ text: "This is ~struck~ text" });
   });
 
   it("MSG-04-b: keeps a markdown link's label and makes the URL clickable", async () => {
@@ -741,8 +747,8 @@ describe("ZoomAdapter — postMessage (MSG-01, MSG-02)", () => {
 
     const callBody = JSON.parse(
       (fetchMock.mock.calls[0][1] as { body: string }).body
-    ) as { content: { body: { text: string }[] } };
-    expect(callBody.content.body[0].text).toBe(
+    ) as { content: { head: { text: string } } };
+    expect(callBody.content.head.text).toBe(
       "See the docs <https://example.com> for more"
     );
   });
@@ -761,9 +767,9 @@ describe("ZoomAdapter — postMessage (MSG-01, MSG-02)", () => {
 
     const callBody = JSON.parse(
       (fetchMock.mock.calls[0][1] as { body: string }).body
-    ) as { content: { body: { text: string }[] } };
+    ) as { content: { head: { text: string } } };
     // `*AST Demo*` is Zoom bold; `_AST Demo_` would be the round-trip bug.
-    expect(callBody.content.body[0].text).toBe("*AST Demo* - built with mdast");
+    expect(callBody.content.head.text).toBe("*AST Demo* - built with mdast");
   });
 
   it("MSG-04-c: markdownSupport false falls back to structured segments", async () => {
@@ -783,13 +789,11 @@ describe("ZoomAdapter — postMessage (MSG-01, MSG-02)", () => {
     const callBody = JSON.parse(
       (fetchMock.mock.calls[0][1] as { body: string }).body
     ) as {
-      content: { body: { style?: unknown; text: string }[] };
+      content: { head: { text: string } };
       is_markdown_support?: boolean;
     };
     expect(callBody.is_markdown_support).toBeUndefined();
-    expect(callBody.content.body).toEqual([
-      { style: { bold: true }, text: "entire line bold", type: "message" },
-    ]);
+    expect(callBody.content.head).toEqual({ text: "entire line bold" });
   });
 
   it("zoomFetch-error: non-2xx response throws Error with operation name and status code", async () => {
@@ -817,7 +821,7 @@ describe("ZoomAdapter — editMessage (MSG-03)", () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it("MSG-03-a: editMessage calls PUT to chatbot IM API with Bearer token and content body", async () => {
+  it("MSG-03-a: editMessage calls PUT to chatbot IM API with Bearer token and content head", async () => {
     const fetchMock = mockFetch(204, {});
     vi.stubGlobal("fetch", fetchMock);
     const adapter = createZoomAdapter(TEST_CREDENTIALS);
@@ -845,7 +849,7 @@ describe("ZoomAdapter — editMessage (MSG-03)", () => {
       account_id: TEST_CREDENTIALS.accountId,
       robot_jid: TEST_CREDENTIALS.robotJid,
     });
-    expect(callBody).toHaveProperty("content.body");
+    expect(callBody).toHaveProperty("content.head.text");
     expect(callBody).toHaveProperty("is_markdown_support", true);
   });
 
@@ -1000,5 +1004,67 @@ describe("ZoomAdapter — Unhandled events and uninitialized adapter safety (THR
     const request = makeZoomRequest(body);
     const response = await adapter.handleWebhook(request);
     expect(response.status).toBe(200); // no crash
+  });
+});
+
+describe("ZoomAdapter — head/body content (issue #46)", () => {
+  const threadId = "zoom:chan@conference.xmpp.zoom.us:msg-head";
+
+  const mockFetch = (status: number, body: unknown) =>
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "content-type": "application/json" },
+        status,
+      })
+    );
+
+  const post = async (message: Parameters<ZoomAdapter["postMessage"]>[1]) => {
+    const fetchMock = mockFetch(200, { message_id: "m" });
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = createZoomAdapter(TEST_CREDENTIALS);
+    vi.spyOn(adapter, "getAccessToken").mockResolvedValue("test-token");
+    await adapter.postMessage(threadId, message);
+    return JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body)
+      .content as Record<string, unknown>;
+  };
+
+  it("sends a plain thread.post string as the head with no body", async () => {
+    expect(await post("Deploy finished")).toEqual({
+      head: { text: "Deploy finished" },
+    });
+  });
+
+  it("splits a Card: title/subtitle -> head, children -> body", async () => {
+    const content = await post(
+      Card({
+        children: [CardText("All 12 services are healthy.")],
+        subtitle: "production",
+        title: "Deploy finished",
+      })
+    );
+    expect(content).toEqual({
+      body: [{ text: "All 12 services are healthy.", type: "message" }],
+      head: { sub_head: { text: "production" }, text: "Deploy finished" },
+    });
+  });
+
+  it("sends a title-only Card as a head with no body", async () => {
+    expect(await post(Card({ children: [], title: "Just a title" }))).toEqual({
+      head: { text: "Just a title" },
+    });
+  });
+
+  it("omits the head for a card with no title (Zoom 400s on empty head.text)", async () => {
+    expect(await post(Card({ children: [CardText("body only")] }))).toEqual({
+      body: [{ text: "body only", type: "message" }],
+    });
+  });
+
+  it("keeps a subtitle-only card's subtitle as the first body line", async () => {
+    expect(
+      await post(Card({ children: [CardText("body")], subtitle: "just sub" }))
+    ).toEqual({
+      body: [{ text: "just sub\n\nbody", type: "message" }],
+    });
   });
 });
