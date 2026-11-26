@@ -306,6 +306,7 @@ platform behaviour and cannot be fixed in this adapter.
   console warning. The adapter sends the documented `<img:url|alt>` token correctly; the
   host must be on the app's trusted-domain list (or one Zoom already trusts, such as
   `developers.zoom.us`).
+- **Fenced code blocks (```` ``` ````) do not render** in a Zoom chatbot message, in either the head or the body (confirmed live, issue #46). Inline `` `code` `` works. Do not route code fences to the body expecting them to render.
 - **No reactions, no message history, no typing indicator.**
 
 ---
