@@ -59,7 +59,7 @@ export interface ZoomContentBodyItem {
 /** The `content` object of a Zoom chatbot message: a head and an optional body. */
 export interface ZoomContent {
   body?: ZoomContentBodyItem[];
-  head: { sub_head?: { text: string }; text: string };
+  head?: { sub_head?: { text: string }; text: string };
 }
 
 /** Options for converting an AST into a Zoom message body. */
@@ -468,14 +468,27 @@ export class ZoomFormatConverter extends BaseFormatConverter {
       { ...card, subtitle: undefined, title: undefined },
       { boldFormat: "**", lineBreak: "\n\n" }
     );
-    const content: ZoomContent = {
-      head: { text: card.title ?? "" },
-      ...(bodyText.trim()
-        ? { body: this.toZoomContentBody(this.toAst(bodyText), options) }
-        : {}),
-    };
-    if (card.subtitle) {
-      content.head.sub_head = { text: card.subtitle };
+
+    // Zoom rejects a head with empty text (HTTP 400), and a sub_head needs a
+    // head. A card without a title therefore sends no head at all; its
+    // subtitle is kept as the first line of the body instead of being lost.
+    const title = card.title?.trim();
+    const bodyParts = [title ? undefined : card.subtitle, bodyText].filter(
+      (part): part is string => Boolean(part?.trim())
+    );
+    const body = bodyParts.length
+      ? this.toZoomContentBody(this.toAst(bodyParts.join("\n\n")), options)
+      : undefined;
+
+    const content: ZoomContent = {};
+    if (title) {
+      content.head = {
+        text: title,
+        ...(card.subtitle ? { sub_head: { text: card.subtitle } } : {}),
+      };
+    }
+    if (body) {
+      content.body = body;
     }
     return content;
   }

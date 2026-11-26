@@ -967,4 +967,18 @@ describe("ZoomAdapter — head/body content (issue #46)", () => {
       head: { text: "Just a title" },
     });
   });
+
+  it("omits the head for a card with no title (Zoom 400s on empty head.text)", async () => {
+    expect(await post(Card({ children: [CardText("body only")] }))).toEqual({
+      body: [{ text: "body only", type: "message" }],
+    });
+  });
+
+  it("keeps a subtitle-only card's subtitle as the first body line", async () => {
+    expect(
+      await post(Card({ children: [CardText("body")], subtitle: "just sub" }))
+    ).toEqual({
+      body: [{ text: "just sub\n\nbody", type: "message" }],
+    });
+  });
 });
