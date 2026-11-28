@@ -297,8 +297,8 @@ platform behaviour and cannot be fixed in this adapter.
   ([devforum thread](https://devforum.zoom.us/t/clarification-on-zoom-chatbot-webhook-events-for-thread-replies-in-1-1-chats/134812))
 - **Unicode HMAC bug (ZOOM-506645).** Zoom's servers may normalise emoji and accented
   characters differently before signing, so such payloads can fail verification. The
-  adapter logs the first 200 bytes of the body as hex at `debug` level when the comparison
-  fails. Affected users should contact Zoom Support citing ZOOM-506645.
+  adapter logs only the body byte count at `debug` level when signature comparison
+  throws, without recording message contents. Affected users should contact Zoom Support citing ZOOM-506645.
 - **Streaming is buffered,** not incremental — output accumulates and is sent as one
   message.
 - **Images render only from Zoom-trusted domains.** The Zoom client drops images from
