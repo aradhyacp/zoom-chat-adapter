@@ -117,7 +117,7 @@ Include:
 
 - Package version (`zoom-chat-adapter`), `chat` SDK version, Node version
 - Minimal reproduction (config + webhook payload with secrets redacted)
-- Relevant logs — on webhook verification failures, the adapter logs raw body hex to aid diagnosis
+- Relevant sanitized logs — signature-comparison exceptions include only the body byte count; never paste message contents or credentials
 - For suspected Zoom platform bugs, reference any Zoom support ticket IDs (e.g. ZOOM-506645 for the Unicode HMAC issue)
 
 ## Code of conduct
