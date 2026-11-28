@@ -82,6 +82,29 @@ describe("ZoomAdapter — Webhook Verification (WBHK-01, WBHK-02, WBHK-03)", () 
     });
   });
 
+  it("WBHK-02: signature mismatch diagnostics never include message bytes", async () => {
+    const logger = new ConsoleLogger("debug");
+    const debug = vi.spyOn(logger, "debug").mockImplementation(() => undefined);
+    const adapter = createZoomAdapter({ ...TEST_CREDENTIALS, logger });
+    const body = JSON.stringify({
+      event: "ignored",
+      message: "private-message-canary",
+    });
+    const response = await adapter.handleWebhook(
+      makeZoomRequest(body, { signature: "v0=short" })
+    );
+    expect(response.status).toBe(401);
+    expect(debug).toHaveBeenCalledWith(
+      "Signature comparison failed (possible ZOOM-506645 Unicode normalization issue)",
+      { bodyBytes: Buffer.byteLength(body, "utf8") }
+    );
+    const diagnostics = JSON.stringify(debug.mock.calls);
+    expect(diagnostics).not.toContain("private-message-canary");
+    expect(diagnostics).not.toContain(
+      Buffer.from("private-message-canary").toString("hex")
+    );
+  });
+
   it("WBHK-02: tampered x-zm-signature returns HTTP 401", async () => {
     const adapter = createZoomAdapter(TEST_CREDENTIALS);
     const body = JSON.stringify({ event: "bot_notification", payload: {} });
