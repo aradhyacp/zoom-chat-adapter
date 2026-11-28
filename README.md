@@ -259,7 +259,7 @@ zoom:{channelId}:{messageId}
 
 **DM thread replies:** Zoom does not fire `chat_message.replied` for 1:1 DM thread replies. The adapter cannot subscribe to or receive threaded replies in DMs.
 
-**Unicode HMAC verification bug (ZOOM-506645):** Zoom's servers may normalize Unicode characters (emoji, accented characters) differently before computing the HMAC. Payloads containing non-ASCII characters may fail signature verification. The adapter logs the raw body hex on verification failure to aid diagnosis. If this affects you, contact Zoom Support referencing ZOOM-506645.
+**Unicode HMAC verification bug (ZOOM-506645):** Zoom's servers may normalize Unicode characters (emoji, accented characters) differently before computing the HMAC. Payloads containing non-ASCII characters may fail signature verification. The adapter logs only the body byte count when signature comparison throws; message contents are not logged. If this affects you, contact Zoom Support referencing ZOOM-506645.
 
 ## Troubleshooting
 
@@ -270,7 +270,7 @@ zoom:{channelId}:{messageId}
 
 **Webhook signature verification fails**
 - Pass the untouched `Request` to `bot.webhooks.zoom`: the HMAC is computed over the raw body, so parsing or logging it first breaks verification
-- Emoji or non-ASCII characters in payloads may fail HMAC verification due to a Zoom server-side Unicode normalization issue (ZOOM-506645) — check debug logs for raw body hex
+- Emoji or non-ASCII characters in payloads may fail HMAC verification due to a Zoom server-side Unicode normalization issue (ZOOM-506645) — contact Zoom Support with sanitized diagnostics
 
 **Bot not receiving events**
 - Confirm the Bot Endpoint URL in **Surface → Team Chat Subscription** matches your deployment URL
